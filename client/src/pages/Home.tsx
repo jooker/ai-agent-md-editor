@@ -67,6 +67,48 @@ export default function Home() {
   const [searchTemplate, setSearchTemplate] = useState("");
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const isScrolling = useRef<string | null>(null);
+
+  // Sync scroll from Editor to Preview
+  const handleEditorScroll = () => {
+    if (viewMode !== "stacked") return;
+    if (isScrolling.current && isScrolling.current !== "editor") return;
+
+    const editor = textareaRef.current;
+    const preview = previewContainerRef.current;
+    if (!editor || !preview) return;
+
+    isScrolling.current = "editor";
+    
+    const scrollPercentage = editor.scrollTop / (editor.scrollHeight - editor.clientHeight);
+    preview.scrollTop = scrollPercentage * (preview.scrollHeight - preview.clientHeight);
+
+    // Clear scroll state
+    setTimeout(() => {
+      isScrolling.current = null;
+    }, 100);
+  };
+
+  // Sync scroll from Preview to Editor
+  const handlePreviewScroll = () => {
+    if (viewMode !== "stacked") return;
+    if (isScrolling.current && isScrolling.current !== "preview") return;
+
+    const editor = textareaRef.current;
+    const preview = previewContainerRef.current;
+    if (!editor || !preview) return;
+
+    isScrolling.current = "preview";
+
+    const scrollPercentage = preview.scrollTop / (preview.scrollHeight - preview.clientHeight);
+    editor.scrollTop = scrollPercentage * (editor.scrollHeight - editor.clientHeight);
+
+    // Clear scroll state
+    setTimeout(() => {
+      isScrolling.current = null;
+    }, 100);
+  };
   
   // Find current tab
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
@@ -433,6 +475,7 @@ export default function Home() {
                 ref={textareaRef}
                 value={activeContent}
                 onChange={(e) => handleContentChange(e.target.value)}
+                onScroll={handleEditorScroll}
                 placeholder="Write your AI agent instructions here..."
                 className="flex-1 w-full bg-background text-foreground font-mono text-xs sm:text-sm p-4 focus:outline-none resize-none leading-relaxed overflow-y-auto focus:ring-0 border-none placeholder:text-muted-foreground/50"
                 style={{ tabSize: 4 }}
@@ -447,7 +490,11 @@ export default function Home() {
                 <span>PREVIEW</span>
                 <span>{stats.wordCount} Words</span>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-muted/5">
+              <div 
+                ref={previewContainerRef}
+                onScroll={handlePreviewScroll}
+                className="flex-1 overflow-y-auto p-4 sm:p-6 bg-muted/5"
+              >
                 <div className="max-w-2xl mx-auto prose prose-amber dark:prose-invert prose-xs sm:prose-sm leading-relaxed">
                   {activeContent.trim() === "" ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
