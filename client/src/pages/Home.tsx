@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Bold, Italic, List, ListOrdered, Link as LinkIcon, Code, Terminal, Quote, Table, FileText, 
-  Plus, X, Download, Copy, Trash2, HelpCircle, FileDown, BookOpen, Sparkles, Layout, Split, Eye, Edit3, Check, Moon, Sun
+  Plus, X, Download, Copy, Trash2, HelpCircle, BookOpen, Sparkles, Split, Eye, Edit3, Sun, Moon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Streamdown } from "streamdown";
 import { TEMPLATES, Template } from "@/lib/templates";
 import { MARKDOWN_GUIDE } from "@/lib/mdGuide";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface Tab {
   id: string;
@@ -36,6 +37,8 @@ You are a highly capable AI Assistant. Your goal is to help users with general t
 `;
 
 export default function Home() {
+  const { theme, toggleTheme } = useTheme();
+
   // Tabs state
   const [tabs, setTabs] = useState<Tab[]>(() => {
     const saved = localStorage.getItem("ai_agent_md_tabs");
@@ -55,8 +58,9 @@ export default function Home() {
     return saved && tabs.some(t => t.id === saved) ? saved : tabs[0]?.id || "tab-1";
   });
 
-  // Editor states
-  const [viewMode, setViewMode] = useState<"split" | "editor" | "preview">("split");
+  // Layout and View state optimized for mobile
+  // On mobile devices, split screen is hard to read, so we offer full Editor, full Preview, or stacked/split.
+  const [viewMode, setViewMode] = useState<"edit" | "preview" | "stacked">("edit");
   const [showGuide, setShowGuide] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateCategory, setTemplateCategory] = useState<'all' | 'basic' | 'specialized' | 'snippet'>('all');
@@ -142,7 +146,6 @@ export default function Home() {
     setTabs(newTabs);
     
     if (activeTabId === idToClose) {
-      // Switch to another tab
       const nextActiveIndex = index === 0 ? 0 : index - 1;
       setActiveTabId(newTabs[nextActiveIndex].id);
     }
@@ -155,11 +158,10 @@ export default function Home() {
     setTabs(prev => prev.map(t => t.id === id ? { ...t, title: name } : t));
   };
 
-  // Insert template into current cursor
+  // Insert template
   const insertTemplate = (template: Template) => {
     const textarea = textareaRef.current;
     if (!textarea) {
-      // Append if textarea not active
       handleContentChange(activeContent + "\n" + template.content);
     } else {
       const start = textarea.selectionStart;
@@ -214,10 +216,8 @@ export default function Home() {
     const charCount = activeContent.length;
     const wordCount = activeContent.trim() === "" ? 0 : activeContent.trim().split(/\s+/).length;
     const lineCount = activeContent.split("\n").length;
-    const headingsCount = (activeContent.match(/^#{1,6}\s/gm) || []).length;
-    const codeBlocksCount = (activeContent.match(/^```/gm) || []).length / 2;
     
-    return { charCount, wordCount, lineCount, headingsCount, codeBlocksCount };
+    return { charCount, wordCount, lineCount };
   };
 
   const stats = getStats();
@@ -232,25 +232,24 @@ export default function Home() {
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500/30 selection:text-amber-200">
+      <div className="h-screen bg-background text-foreground flex flex-col font-sans overflow-hidden transition-colors duration-200">
         
-        {/* Top Header & Main Navigation */}
-        <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40 px-4 py-3 flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20 text-amber-500">
-              <Terminal className="h-5 w-5" />
+        {/* Top Header & Navigation */}
+        <header className="border-b border-border bg-card/50 backdrop-blur-md px-4 py-2.5 flex items-center justify-between z-10 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20 text-amber-500">
+              <Terminal className="h-4.5 w-4.5" />
             </div>
             <div>
-              <h1 className="font-bold text-base tracking-wide flex items-center gap-1.5 text-slate-100">
-                AgentForge <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono font-normal">MD</span>
+              <h1 className="font-bold text-sm tracking-wide flex items-center gap-1">
+                AgentForge <span className="text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-1 py-0.2 rounded font-mono font-normal">MD</span>
               </h1>
-              <p className="text-xs text-slate-400">AI Agent Instructions Architect</p>
             </div>
           </div>
 
           {/* Quick Actions Bar */}
-          <div className="flex items-center gap-2">
-            {/* Open File Button */}
+          <div className="flex items-center gap-1.5">
+            {/* Open File */}
             <label className="relative">
               <input 
                 type="file" 
@@ -258,85 +257,74 @@ export default function Home() {
                 className="hidden" 
                 onChange={handleFileOpen} 
               />
-              <span className="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-slate-100 h-8 px-3 py-2 cursor-pointer">
-                <BookOpen className="h-3.5 w-3.5 mr-1.5 text-amber-500" />
-                Open File
+              <span className="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-2.5 cursor-pointer">
+                <BookOpen className="h-3.5 w-3.5 mr-1 text-amber-500" />
+                <span className="hidden sm:inline">Open</span>
               </span>
             </label>
 
-            {/* Template Library Trigger */}
+            {/* Template Library */}
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => setShowTemplates(true)}
-              className="border-amber-500/30 hover:border-amber-500 bg-amber-500/5 hover:bg-amber-500/10 text-amber-400 text-xs h-8"
+              className="border-amber-500/20 hover:border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs h-8 px-2.5"
             >
-              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
               Templates
             </Button>
 
-            {/* Copy Button */}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleCopy}
-              className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-slate-100 text-xs h-8"
+            {/* Theme Toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="text-muted-foreground hover:text-foreground h-8 w-8"
+              title="Toggle Theme"
             >
-              <Copy className="h-3.5 w-3.5 mr-1.5" />
-              Copy
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
 
-            {/* Download Button */}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleDownload}
-              className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-slate-100 text-xs h-8"
-            >
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-              Download
-            </Button>
-
-            {/* Help Button */}
+            {/* Help Guide */}
             <Button 
               variant="ghost" 
               size="icon" 
               onClick={() => setShowGuide(true)}
-              className="text-slate-400 hover:text-amber-400 hover:bg-slate-800 h-8 w-8"
+              className="text-muted-foreground hover:text-foreground h-8 w-8"
             >
               <HelpCircle className="h-4 w-4" />
             </Button>
           </div>
         </header>
 
-        {/* Tab Bar */}
-        <div className="bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between">
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pt-2 max-w-[80%]">
+        {/* Tab & File Navigator */}
+        <div className="bg-muted/40 border-b border-border px-4 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pt-1.5 max-w-[70%]">
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               return (
                 <div
                   key={tab.id}
                   onClick={() => setActiveTabId(tab.id)}
-                  className={`group relative flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-t-md border-t-2 transition-all duration-150 cursor-pointer ${
+                  className={`group relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t-md border-t-2 transition-all duration-150 cursor-pointer ${
                     isActive 
-                      ? "bg-slate-950 border-amber-500 text-amber-400" 
-                      : "bg-slate-900/50 border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                      ? "bg-background border-amber-500 text-amber-600 dark:text-amber-400" 
+                      : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
                   }`}
                 >
-                  <FileText className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-slate-500"}`} />
+                  <FileText className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
                   <input
                     type="text"
                     value={tab.title.replace(".md", "")}
                     onChange={(e) => renameTab(tab.id, e.target.value)}
-                    className="bg-transparent border-none focus:outline-none focus:ring-0 w-24 text-ellipsis cursor-pointer font-mono text-[11px]"
-                    title="Double click to rename file"
+                    className="bg-transparent border-none focus:outline-none focus:ring-0 w-16 sm:w-24 text-ellipsis cursor-pointer font-mono text-[11px]"
+                    title="Double click to rename"
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <span className="text-[10px] text-slate-600 font-mono">.md</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">.md</span>
                   <button
                     onClick={(e) => closeTab(tab.id, e)}
-                    className="p-0.5 rounded-full hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    className="p-0.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-60 group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -349,47 +337,47 @@ export default function Home() {
               variant="ghost"
               size="icon"
               onClick={addNewTab}
-              className="h-7 w-7 rounded-md hover:bg-slate-800 text-slate-400 hover:text-amber-400 self-center mb-1 ml-1"
+              className="h-6 w-6 rounded-md hover:bg-muted text-muted-foreground hover:text-amber-500 self-center mb-1 ml-1"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
 
-          {/* View Mode Toggles */}
-          <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg p-1 my-1.5">
+          {/* View Mode Toggle (Mobile Optimized) */}
+          <div className="flex items-center bg-muted rounded-lg p-0.5 my-1 shrink-0">
             <Button
-              variant={viewMode === "editor" ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
-              onClick={() => setViewMode("editor")}
-              className={`h-7 px-2.5 text-xs rounded-md ${viewMode === "editor" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "text-slate-400"}`}
+              onClick={() => setViewMode("edit")}
+              className={`h-6.5 px-2 text-xs rounded-md transition-all ${viewMode === "edit" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
             >
-              <Edit3 className="h-3.5 w-3.5 mr-1" />
-              Editor
+              <Edit3 className="h-3 w-3 sm:mr-1" />
+              <span className="hidden sm:inline">Edit</span>
             </Button>
             <Button
-              variant={viewMode === "split" ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
-              onClick={() => setViewMode("split")}
-              className={`h-7 px-2.5 text-xs rounded-md ${viewMode === "split" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "text-slate-400"}`}
+              onClick={() => setViewMode("stacked")}
+              className={`h-6.5 px-2 text-xs rounded-md transition-all ${viewMode === "stacked" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
             >
-              <Split className="h-3.5 w-3.5 mr-1" />
-              Split
+              <Split className="h-3 w-3 sm:mr-1" />
+              <span className="hidden sm:inline">Split</span>
             </Button>
             <Button
-              variant={viewMode === "preview" ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
               onClick={() => setViewMode("preview")}
-              className={`h-7 px-2.5 text-xs rounded-md ${viewMode === "preview" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "text-slate-400"}`}
+              className={`h-6.5 px-2 text-xs rounded-md transition-all ${viewMode === "preview" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
             >
-              <Eye className="h-3.5 w-3.5 mr-1" />
-              Preview
+              <Eye className="h-3 w-3 sm:mr-1" />
+              <span className="hidden sm:inline">Preview</span>
             </Button>
           </div>
         </div>
 
-        {/* Toolbar & Formatting buttons */}
-        <div className="bg-slate-950 border-b border-slate-800/80 px-4 py-1.5 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1">
+        {/* Toolbar & Formatting */}
+        <div className="bg-background border-b border-border px-3 py-1 flex items-center justify-between gap-2 shrink-0 overflow-x-auto scrollbar-none">
+          <div className="flex items-center gap-0.5">
             {formatActions.map((item, index) => (
               <Tooltip key={index}>
                 <TooltipTrigger asChild>
@@ -397,116 +385,128 @@ export default function Home() {
                     variant="ghost"
                     size="icon"
                     onClick={item.action}
-                    className="h-8 w-8 rounded-md text-slate-400 hover:text-amber-400 hover:bg-slate-900 active:scale-95 transition-all"
+                    className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted active:scale-95 transition-all"
                   >
                     {item.icon}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="bg-slate-900 border border-slate-800 text-slate-200 text-xs">
+                <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
                   {item.label}
                 </TooltipContent>
               </Tooltip>
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono text-slate-500">
-              Chars: <span className="text-slate-300 font-bold">{stats.charCount}</span>
-            </span>
-            <span className="text-[11px] font-mono text-slate-500">
-              Words: <span className="text-slate-300 font-bold">{stats.wordCount}</span>
-            </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCopy}
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
+              title="Copy all"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleDownload}
+              className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
+              title="Download file"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
 
-        {/* Main Workspace (Split / Single) */}
-        <main className="flex-1 flex overflow-hidden bg-slate-950">
+        {/* Workspace: Dynamic Mobile Stacking / Split */}
+        <main className="flex-1 flex flex-col md:flex-row overflow-hidden bg-background">
           
-          {/* EDITOR PANEL */}
-          {(viewMode === "split" || viewMode === "editor") && (
-            <div className={`flex-1 flex flex-col border-r border-slate-800/60 ${viewMode === "editor" ? "w-full" : "w-1/2"}`}>
+          {/* EDITOR AREA */}
+          {(viewMode === "edit" || viewMode === "stacked") && (
+            <div className={`flex-1 flex flex-col min-h-0 border-b md:border-b-0 md:border-r border-border ${viewMode === "stacked" ? "h-1/2 md:h-full md:w-1/2" : "h-full md:w-full"}`}>
+              <div className="bg-muted/20 px-3 py-1 border-b border-border flex items-center justify-between text-[10px] text-muted-foreground font-mono shrink-0">
+                <span>EDITOR</span>
+                <span>{stats.charCount} Chars</span>
+              </div>
               <textarea
                 ref={textareaRef}
                 value={activeContent}
                 onChange={(e) => handleContentChange(e.target.value)}
-                placeholder="Write your AI agent markdown instructions here..."
-                className="flex-1 w-full bg-slate-950 text-slate-200 font-mono text-sm p-6 focus:outline-none resize-none leading-relaxed overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent focus:ring-0 border-none placeholder:text-slate-600"
+                placeholder="Write your AI agent instructions here..."
+                className="flex-1 w-full bg-background text-foreground font-mono text-xs sm:text-sm p-4 focus:outline-none resize-none leading-relaxed overflow-y-auto focus:ring-0 border-none placeholder:text-muted-foreground/50"
                 style={{ tabSize: 4 }}
               />
             </div>
           )}
 
-          {/* PREVIEW PANEL */}
-          {(viewMode === "split" || viewMode === "preview") && (
-            <div className={`flex-1 overflow-y-auto p-8 bg-slate-900/40 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent ${viewMode === "preview" ? "w-full" : "w-1/2"}`}>
-              <div className="max-w-3xl mx-auto prose prose-invert prose-amber prose-sm md:prose-base leading-relaxed">
-                {activeContent.trim() === "" ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
-                    <Eye className="h-8 w-8 text-slate-600 animate-pulse" />
-                    <p className="text-sm font-mono">Preview is empty. Start typing to see results.</p>
-                  </div>
-                ) : (
-                  <Streamdown>{activeContent}</Streamdown>
-                )}
+          {/* PREVIEW AREA */}
+          {(viewMode === "preview" || viewMode === "stacked") && (
+            <div className={`flex-1 flex flex-col min-h-0 ${viewMode === "stacked" ? "h-1/2 md:h-full md:w-1/2" : "h-full md:w-full"}`}>
+              <div className="bg-muted/20 px-3 py-1 border-b border-border flex items-center justify-between text-[10px] text-muted-foreground font-mono shrink-0">
+                <span>PREVIEW</span>
+                <span>{stats.wordCount} Words</span>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-muted/5">
+                <div className="max-w-2xl mx-auto prose prose-amber dark:prose-invert prose-xs sm:prose-sm leading-relaxed">
+                  {activeContent.trim() === "" ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                      <Eye className="h-6 w-6 text-muted-foreground/40 animate-pulse" />
+                      <p className="text-xs font-mono">No content to preview.</p>
+                    </div>
+                  ) : (
+                    <Streamdown>{activeContent}</Streamdown>
+                  )}
+                </div>
               </div>
             </div>
           )}
         </main>
 
-        {/* Bottom Status Deck */}
-        <footer className="border-t border-slate-800 bg-slate-950 px-4 py-2 flex flex-wrap gap-4 items-center justify-between text-[11px] text-slate-500 font-mono">
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1 text-emerald-500">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Workspace Saved Locally
-            </span>
-            <span>Lines: <strong className="text-slate-300">{stats.lineCount}</strong></span>
-            <span>Headings: <strong className="text-slate-300">{stats.headingsCount}</strong></span>
-            <span>Code Blocks: <strong className="text-slate-300">{stats.codeBlocksCount}</strong></span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>Tailored for AI System Prompts</span>
-          </div>
+        {/* Footer */}
+        <footer className="border-t border-border bg-card px-4 py-1.5 flex items-center justify-between text-[10px] text-muted-foreground font-mono shrink-0">
+          <span className="flex items-center gap-1 text-emerald-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            Auto-saved
+          </span>
+          <span>Lines: {stats.lineCount}</span>
         </footer>
 
         {/* TEMPLATES DIALOG MODAL */}
         <Dialog open={showTemplates} onOpenChange={setShowTemplates}>
-          <DialogContent className="max-w-4xl bg-slate-900 border border-slate-800 text-slate-100 max-h-[85vh] flex flex-col p-0 overflow-hidden shadow-2xl shadow-amber-500/5">
+          <DialogContent className="max-w-xl bg-card border border-border text-foreground max-h-[80vh] flex flex-col p-0 overflow-hidden shadow-xl rounded-xl">
             {/* Header */}
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" />
+                <h2 className="text-sm font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                  <Sparkles className="h-4.5 w-4.5" />
                   Agent Template Library
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Choose a pre-designed template or structural snippet to insert into your instructions.
-                </p>
               </div>
               <Button 
                 variant="ghost" 
                 size="icon" 
                 onClick={() => setShowTemplates(false)}
-                className="text-slate-400 hover:text-slate-200 h-8 w-8"
+                className="text-muted-foreground hover:text-foreground h-7 w-7"
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
             {/* Filter Toolbar */}
-            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800/80 flex flex-wrap gap-4 items-center justify-between">
+            <div className="px-4 py-2 bg-muted/40 border-b border-border flex flex-col sm:flex-row gap-2 items-center justify-between">
               {/* Category tabs */}
-              <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800">
+              <div className="flex items-center gap-0.5 bg-muted p-0.5 rounded-lg overflow-x-auto w-full sm:w-auto">
                 {(['all', 'basic', 'specialized', 'snippet'] as const).map((cat) => (
                   <Button
                     key={cat}
-                    variant={templateCategory === cat ? "secondary" : "ghost"}
+                    variant="ghost"
                     size="sm"
                     onClick={() => setTemplateCategory(cat)}
-                    className={`h-7 px-3 text-xs capitalize ${
+                    className={`h-6.5 px-2.5 text-[10px] capitalize rounded-md transition-all ${
                       templateCategory === cat 
-                        ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" 
-                        : "text-slate-400 hover:text-slate-200"
+                        ? "bg-background text-foreground shadow-sm" 
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {cat}
@@ -520,53 +520,42 @@ export default function Home() {
                 placeholder="Search templates..."
                 value={searchTemplate}
                 onChange={(e) => setSearchTemplate(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500/50 w-full sm:w-60"
+                className="bg-background border border-input rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-amber-500/50 w-full sm:w-40"
               />
             </div>
 
             {/* Grid of Templates */}
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {filteredTemplates.map((tpl) => (
                 <div 
                   key={tpl.id}
-                  className="group border border-slate-800 hover:border-amber-500/40 bg-slate-950 hover:bg-amber-500/[0.01] p-5 rounded-xl flex flex-col justify-between transition-all duration-200"
+                  className="border border-border bg-background hover:bg-muted/10 p-3 rounded-lg flex flex-col justify-between transition-all"
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-sm text-slate-100 group-hover:text-amber-400 transition-colors">
-                        {tpl.title}
-                      </h3>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                        tpl.category === 'basic' 
-                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
-                          : tpl.category === 'specialized' 
-                          ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' 
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>
-                        {tpl.category}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                      {tpl.description}
-                    </p>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-semibold text-xs text-foreground">
+                      {tpl.title}
+                    </h3>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full border border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400 capitalize">
+                      {tpl.category}
+                    </span>
                   </div>
-                  
-                  <div className="flex items-center gap-2 mt-auto pt-2 border-t border-slate-900">
-                    <Button 
-                      size="sm" 
-                      onClick={() => insertTemplate(tpl)}
-                      className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-medium text-xs h-8"
-                    >
-                      Insert Template
-                    </Button>
-                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-normal mb-2">
+                    {tpl.description}
+                  </p>
+                  <Button 
+                    size="sm" 
+                    onClick={() => insertTemplate(tpl)}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-medium text-[11px] h-7"
+                  >
+                    Insert Template
+                  </Button>
                 </div>
               ))}
 
               {filteredTemplates.length === 0 && (
-                <div className="col-span-2 py-12 flex flex-col items-center justify-center text-slate-500 gap-2">
-                  <Sparkles className="h-6 w-6 text-slate-700" />
-                  <p className="text-xs font-mono">No templates match your search filters.</p>
+                <div className="py-8 flex flex-col items-center justify-center text-muted-foreground gap-1">
+                  <Sparkles className="h-5 w-5 text-muted-foreground/30" />
+                  <p className="text-[11px] font-mono">No templates found.</p>
                 </div>
               )}
             </div>
@@ -575,54 +564,45 @@ export default function Home() {
 
         {/* MARKDOWN GUIDE / HELP DIALOG MODAL */}
         <Dialog open={showGuide} onOpenChange={setShowGuide}>
-          <DialogContent className="max-w-3xl bg-slate-900 border border-slate-800 text-slate-100 max-h-[85vh] flex flex-col p-0 overflow-hidden shadow-2xl shadow-amber-500/5">
+          <DialogContent className="max-w-xl bg-card border border-border text-foreground max-h-[80vh] flex flex-col p-0 overflow-hidden shadow-xl rounded-xl">
             {/* Header */}
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  Markdown & Prompt Engineering Guide
+                <h2 className="text-sm font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                  <BookOpen className="h-4.5 w-4.5" />
+                  Markdown & Prompt Guide
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Learn standard markdown formatting and best practices for structured agent instruction design.
-                </p>
               </div>
               <Button 
                 variant="ghost" 
                 size="icon" 
                 onClick={() => setShowGuide(false)}
-                className="text-slate-400 hover:text-slate-200 h-8 w-8"
+                className="text-muted-foreground hover:text-foreground h-7 w-7"
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
               {MARKDOWN_GUIDE.map((section, idx) => (
-                <div key={idx} className="space-y-4">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-amber-500/80 border-b border-slate-800 pb-1">
+                <div key={idx} className="space-y-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 border-b border-border pb-0.5">
                     {section.title}
                   </h3>
                   
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
                     {section.items.map((item, itemIdx) => (
-                      <div key={itemIdx} className="bg-slate-950 border border-slate-800/80 p-4 rounded-xl space-y-3">
+                      <div key={itemIdx} className="bg-background border border-border p-3 rounded-lg space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <h4 className="font-semibold text-xs text-slate-200">{item.name}</h4>
-                          <code className="text-[10px] bg-slate-900 border border-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono">
+                          <h4 className="font-semibold text-[11px] text-foreground">{item.name}</h4>
+                          <code className="text-[9px] bg-muted text-amber-600 dark:text-amber-400 px-1.5 py-0.2 rounded font-mono">
                             {item.syntax.replace(/\\n/g, ' ')}
                           </code>
                         </div>
-                        <p className="text-xs text-slate-400 leading-relaxed">
+                        <p className="text-[10px] text-muted-foreground leading-normal">
                           {item.desc}
                         </p>
-                        <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-900">
-                          <div className="text-[10px] text-slate-500 font-mono mb-1">EXAMPLE</div>
-                          <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap leading-normal">
-                            {item.example.replace(/\\n/g, '\n')}
-                          </pre>
-                        </div>
                       </div>
                     ))}
                   </div>
