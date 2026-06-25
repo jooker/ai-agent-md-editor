@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Streamdown } from "streamdown";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { TEMPLATES, Template } from "@/lib/templates";
 import { MARKDOWN_GUIDE } from "@/lib/mdGuide";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -495,14 +495,14 @@ export default function Home() {
                 onScroll={handlePreviewScroll}
                 className="flex-1 overflow-y-auto p-4 sm:p-6 bg-muted/5"
               >
-                <div className="max-w-2xl mx-auto prose prose-amber dark:prose-invert prose-xs sm:prose-sm leading-relaxed">
+                <div className="max-w-2xl mx-auto leading-relaxed">
                   {activeContent.trim() === "" ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
                       <Eye className="h-6 w-6 text-muted-foreground/40 animate-pulse" />
                       <p className="text-xs font-mono">No content to preview.</p>
                     </div>
                   ) : (
-                    <Streamdown>{activeContent}</Streamdown>
+                    <MarkdownRenderer content={activeContent} />
                   )}
                 </div>
               </div>
