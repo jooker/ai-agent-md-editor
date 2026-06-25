@@ -1,10 +1,8 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
+
 import mermaid from "mermaid";
-import "katex/dist/katex.min.css";
 
 interface MarkdownRendererProps {
   content: string;
@@ -171,8 +169,8 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[]}
       components={{
         h1: Heading1,
         h2: Heading2,
