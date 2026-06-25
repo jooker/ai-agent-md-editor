@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { TEMPLATES, Template } from "@/lib/templates";
@@ -522,6 +522,7 @@ export default function Home() {
         {/* TEMPLATES DIALOG MODAL */}
         <Dialog open={showTemplates} onOpenChange={setShowTemplates}>
           <DialogContent className="max-w-xl bg-card border border-border text-foreground max-h-[80vh] flex flex-col p-0 overflow-hidden shadow-xl rounded-xl">
+            <DialogTitle className="sr-only">Agent Template Library</DialogTitle>
             {/* Header */}
             <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
@@ -612,6 +613,7 @@ export default function Home() {
         {/* MARKDOWN GUIDE / HELP DIALOG MODAL */}
         <Dialog open={showGuide} onOpenChange={setShowGuide}>
           <DialogContent className="max-w-xl bg-card border border-border text-foreground max-h-[80vh] flex flex-col p-0 overflow-hidden shadow-xl rounded-xl">
+            <DialogTitle className="sr-only">Markdown & Prompt Guide</DialogTitle>
             {/* Header */}
             <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
