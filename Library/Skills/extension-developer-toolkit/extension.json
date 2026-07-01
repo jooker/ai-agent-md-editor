@@ -1,0 +1,17 @@
+{
+  "id": "extension-developer-toolkit",
+  "name": "Extension Developer Toolkit",
+  "description": "Standard toolkit and scaffolding guidelines for AI agents to build and package extensions.",
+  "version": "1.0.0",
+  "author": "Antigravity Agent",
+  "category": "Developer Tools",
+  "enabled": true,
+  "config": {
+    "targetDir": "./Library/Skills",
+    "templates": [
+      "extension.json",
+      "README.md",
+      "scaffold-extension.js"
+    ]
+  }
+}

@@ -6,6 +6,14 @@ import * as yaml from "js-yaml";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Info, Lightbulb, AlertCircle, AlertTriangle, AlertOctagon } from "lucide-react";
+import Prism from "prismjs";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-yaml";
+import "prismjs/components/prism-markdown";
 
 interface MarkdownRendererProps {
   content: string;
@@ -44,7 +52,7 @@ const renderValue = (val: any): React.ReactNode => {
   return <span className="font-sans break-all">{String(val)}</span>;
 };
 
-// Custom component for code blocks with Mermaid support
+// Custom component for code blocks with Mermaid support and Prism syntax highlighting
 const CodeBlock = ({ inline, className, children }: any) => {
   const match = /language-(\w+)/.exec(className || "");
   const language = match ? match[1] : "";
@@ -67,8 +75,39 @@ const CodeBlock = ({ inline, className, children }: any) => {
     );
   }
 
+  const codeText = String(children).replace(/\n$/, "");
+  let highlightedHtml = "";
+  let hasHighlight = false;
+
+  if (language && Prism.languages[language]) {
+    try {
+      highlightedHtml = Prism.highlight(
+        codeText,
+        Prism.languages[language],
+        language
+      );
+      hasHighlight = true;
+    } catch (e) {
+      console.error("Prism highlighting error:", e);
+    }
+  }
+
+  if (hasHighlight) {
+    return (
+      <pre className="bg-slate-900/90 dark:bg-slate-950/80 text-slate-100 p-4 rounded-lg overflow-x-auto my-3 border border-border/40 font-mono text-xs leading-relaxed relative group">
+        <div className="absolute right-2.5 top-2.5 text-[9px] uppercase tracking-widest text-muted-foreground/60 bg-muted/20 border border-border/20 px-1.5 py-0.5 rounded font-mono select-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          {language}
+        </div>
+        <code 
+          className={`prism-code language-${language}`}
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+      </pre>
+    );
+  }
+
   return (
-    <pre className="bg-muted text-muted-foreground p-4 rounded-lg overflow-x-auto my-3 border border-border">
+    <pre className="bg-muted text-muted-foreground p-4 rounded-lg overflow-x-auto my-3 border border-border font-mono text-xs leading-relaxed">
       <code className={className}>
         {children}
       </code>

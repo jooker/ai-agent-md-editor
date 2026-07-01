@@ -1,0 +1,66 @@
+html-video-production
+=====================
+
+This Manus skill package redistributes selected working materials from the
+open-source HyperFrames project under the terms of the Apache License,
+Version 2.0. A copy of the license is included at the package root as
+LICENSE (and as UPSTREAM_LICENSE_APACHE-2.0.txt for historical context).
+
+Upstream project
+----------------
+  Project:         heygen-com/hyperframes
+  Repository:      https://github.com/heygen-com/hyperframes
+  Upstream license: Apache License, Version 2.0
+  Pinned commit:   8d83d4f132d384de866da70cb286e4af71871dd5
+  Pinned date:     2026-05-04
+
+Bundled upstream skills
+-----------------------
+The following upstream skills, located under `skills/<name>/` in the upstream
+repository at the pinned commit, are redistributed under
+`references/<name>/` in this package:
+
+  - gsap
+  - hyperframes
+  - hyperframes-cli
+  - hyperframes-registry
+  - website-to-hyperframes
+
+The upstream skills `animejs`, `css-animations`, `lottie`, `three`, `waapi`,
+`tailwind`, and `remotion-to-hyperframes` are intentionally not bundled.
+
+Modifications
+-------------
+A small number of upstream files were modified to replace third-party
+media-generation paths (Kokoro TTS, `npx hyperframes tts`,
+`npx hyperframes transcribe`, ElevenLabs, HeyGen TTS, Whisper) with
+Manus-native tools (`generate_speech`, `generate_music`, `generate_image`)
+and a sandbox utility (`manus-speech-to-text`). Each modified file carries a
+prominent "Modified by Manus" notice. The complete diff summary is provided
+in `_manus-overrides/modifications.md`, satisfying the modification
+disclosure requirement of Apache License 2.0 §4(b).
+
+The following Manus-authored materials are added in this package:
+
+  - SKILL.md (top-level)
+  - LICENSE
+  - NOTICE.txt (this file)
+  - _manus-overrides/media-generation.md
+  - _manus-overrides/modifications.md
+
+Trademarks and non-affiliation
+------------------------------
+"HyperFrames" and "HeyGen" are trademarks of HeyGen, Inc. They are used in
+this package only to describe the origin of the redistributed materials, in
+the sense permitted by Apache License 2.0 §6 (which does not grant
+permission to use the licensor's trade names). This Manus skill is not
+affiliated with, sponsored by, or endorsed by HeyGen, Inc.
+
+Third-party runtimes
+--------------------
+HyperFrames compositions execute against third-party runtimes that have
+their own licenses, including but not limited to GSAP (GreenSock),
+FFmpeg, Chromium / Puppeteer, and (for select compositions) shader
+transition libraries. Those licenses are independent of the Apache 2.0
+license under which this skill package is redistributed; consult the
+respective projects for their terms before using them in production.

@@ -176,3 +176,70 @@
     }
   }
 }
+
+/* ── Prism Syntax Highlighting Theme ──────────────────────────────────────── */
+.prism-code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+  tab-size: 4;
+}
+
+.prism-code .token.comment,
+.prism-code .token.prolog,
+.prism-code .token.doctype,
+.prism-code .token.cdata {
+  @apply text-emerald-500/80 dark:text-emerald-400/70 italic;
+}
+
+.prism-code .token.punctuation {
+  @apply text-slate-400 dark:text-slate-500;
+}
+
+.prism-code .token.property,
+.prism-code .token.tag,
+.prism-code .token.boolean,
+.prism-code .token.number,
+.prism-code .token.constant,
+.prism-code .token.symbol,
+.prism-code .token.deleted {
+  @apply text-amber-500 dark:text-amber-400;
+}
+
+.prism-code .token.selector,
+.prism-code .token.attr-name,
+.prism-code .token.string,
+.prism-code .token.char,
+.prism-code .token.builtin,
+.prism-code .token.inserted {
+  @apply text-emerald-400 dark:text-emerald-300;
+}
+
+.prism-code .token.operator,
+.prism-code .token.entity,
+.prism-code .token.url {
+  @apply text-slate-300;
+}
+
+.prism-code .token.atrule,
+.prism-code .token.attr-value,
+.prism-code .token.keyword {
+  @apply text-orange-500 dark:text-orange-400 font-bold;
+}
+
+.prism-code .token.function,
+.prism-code .token.class-name {
+  @apply text-blue-400 dark:text-blue-300 font-medium;
+}
+
+.prism-code .token.regex,
+.prism-code .token.important,
+.prism-code .token.variable {
+  @apply text-violet-400 dark:text-violet-300;
+}
+
+.prism-code .token.bold {
+  @apply font-bold;
+}
+
+.prism-code .token.italic {
+  @apply italic;
+}
