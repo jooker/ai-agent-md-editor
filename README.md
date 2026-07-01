@@ -138,7 +138,7 @@ NEVER use external map libraries or request API keys from users - the Manus prox
 `package.json`
 ```tsx
 {
-  "name": "ai-agent-md-editor",
+  "name": "AgentMD",
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",

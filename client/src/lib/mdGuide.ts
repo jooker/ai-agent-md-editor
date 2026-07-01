@@ -5,6 +5,7 @@ export interface GuideSection {
     syntax: string;
     example: string;
     desc: string;
+    noInsert?: boolean;
   }[];
 }
 
@@ -43,14 +44,14 @@ export const MARKDOWN_GUIDE: GuideSection[] = [
     items: [
       {
         name: "Code Blocks",
-        syntax: "\`\`\`python\\nprint('hello')\\n\`\`\`",
-        example: "\`\`\`json\\n{ \"status\": \"success\" }\\n\`\`\`",
+        syntax: "```python\\nprint('hello')\\n```",
+        example: "```json\\n{ \"status\": \"success\" }\\n```",
         desc: "Define expected output structures (JSON, YAML, etc.) or display programming rules."
       },
       {
         name: "Inline Code",
-        syntax: "\`code\`",
-        example: "Use the \`search_web\` tool to retrieve current news.",
+        syntax: "`code`",
+        example: "Use the `search_web` tool to retrieve current news.",
         desc: "Reference specific tool names, variables, or environment variables."
       },
       {
@@ -70,6 +71,29 @@ export const MARKDOWN_GUIDE: GuideSection[] = [
         syntax: "| Col 1 | Col 2 |\\n|---|---|\\n| Val 1 | Val 2 |",
         example: "| Tool | Purpose |\\n|---|---|\\n| search | Web lookup |\\n| calc | Math solver |",
         desc: "Perfect for mapping out tool descriptions, parameter limits, or system configurations."
+      }
+    ]
+  },
+  {
+    title: "GFM+ Syntax Extensions",
+    items: [
+      {
+        name: "Strikethrough",
+        syntax: "~~text~~",
+        example: "This is ~~incorrect~~ correct text.",
+        desc: "Render a line through deleted or corrected text."
+      },
+      {
+        name: "Task Lists",
+        syntax: "- [ ] task\\n- [x] done",
+        example: "- [x] Initial design\\n- [ ] Write tests\\n- [ ] Deploy",
+        desc: "Create interactive checklist lists for tracking tasks and features."
+      },
+      {
+        name: "GFM Alerts / Callouts",
+        syntax: "> [!NOTE]\\n> text",
+        example: "> [!NOTE]\\n> This is a GFM callout alert panel.\\n\\n> [!WARNING]\\n> Critical warning info here.",
+        desc: "Render colored callout boxes for Notes, Tips, Important, Warnings, and Cautions."
       }
     ]
   },
@@ -99,6 +123,25 @@ export const MARKDOWN_GUIDE: GuideSection[] = [
         syntax: "## Examples\\nUser: X\\nAgent: Y",
         example: "User: Add 2 and 2\\nAgent: The answer is 4.",
         desc: "Provide 1-3 examples of ideal inputs and outputs. This is the single most effective way to guide agent behavior."
+      }
+    ]
+  },
+  {
+    title: "Desktop & PWA Installation",
+    items: [
+      {
+        name: "Run Standalone",
+        syntax: "run.bat / Launch AgentForge.lnk",
+        example: "Double-click run.bat or the generated Launch AgentForge shortcut inside this folder to boot the Node.js production server and automatically launch the app in your browser on the first open.",
+        desc: "Requires Node.js to be installed on your system. It automatically handles dependencies and builds if missing.",
+        noInsert: true
+      },
+      {
+        name: "Install PWA App",
+        syntax: "PWA Browser Installation",
+        example: "Desktop Chrome/Edge: Click the 'Install' button in the toolbar header, or click the install icon in the URL bar. \n\niOS Safari: Tap Share -> Add to Home Screen. \n\nAndroid Chrome: Tap the three-dot menu -> Install app. \n\nmacOS Safari: File -> Add to Dock.",
+        desc: "Allows you to run AgentForge as a dedicated standalone window with its own application dock icon, offline support, and system integration.",
+        noInsert: true
       }
     ]
   }

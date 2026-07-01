@@ -1,12 +1,48 @@
 import { useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
 import mermaid from "mermaid";
+import * as yaml from "js-yaml";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Info, Lightbulb, AlertCircle, AlertTriangle, AlertOctagon } from "lucide-react";
 
 interface MarkdownRendererProps {
   content: string;
 }
+
+// Helper to render YAML values beautifully
+const renderValue = (val: any): React.ReactNode => {
+  if (val === null || val === undefined) {
+    return <span className="text-muted-foreground italic font-normal text-xs">null</span>;
+  }
+  if (typeof val === "boolean") {
+    return (
+      <Badge variant={val ? "default" : "secondary"} className="text-[11px] font-mono py-0 px-1.5 h-5">
+        {val ? "true" : "false"}
+      </Badge>
+    );
+  }
+  if (Array.isArray(val)) {
+    return (
+      <div className="flex flex-wrap gap-1 mt-1">
+        {val.map((item, idx) => (
+          <Badge key={idx} variant="outline" className="text-[11px] py-0.5 px-2 font-normal">
+            {String(item)}
+          </Badge>
+        ))}
+      </div>
+    );
+  }
+  if (typeof val === "object") {
+    return (
+      <pre className="text-[11px] font-mono bg-muted/50 p-2 rounded border border-border/50 max-h-32 overflow-y-auto whitespace-pre-wrap leading-tight mt-1 text-foreground">
+        {JSON.stringify(val, null, 2)}
+      </pre>
+    );
+  }
+  return <span className="font-sans break-all">{String(val)}</span>;
+};
 
 // Custom component for code blocks with Mermaid support
 const CodeBlock = ({ inline, className, children }: any) => {
@@ -103,12 +139,146 @@ const ListItem = ({ children }: any) => (
   </li>
 );
 
-// Custom blockquote component
-const Blockquote = ({ children }: any) => (
-  <blockquote className="border-l-4 border-amber-500 pl-4 my-3 italic text-muted-foreground bg-muted/20 py-2 rounded-r">
+// Custom blockquote component with GFM Alert/Callout support
+const Blockquote = ({ children }: any) => {
+  const getElementText = (node: any): string => {
+    if (!node) return "";
+    if (typeof node === "string") return node;
+    if (Array.isArray(node)) return node.map(getElementText).join("");
+    if (node.props && node.props.children) return getElementText(node.props.children);
+    return "";
+  };
+
+  const stripAlertPrefix = (node: any): any => {
+    let stripped = false;
+    
+    const recurse = (n: any): any => {
+      if (!n) return null;
+      
+      if (typeof n === "string") {
+        if (!stripped) {
+          const clean = n.replace(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\r?\n?/i, "");
+          if (clean !== n) {
+            stripped = true;
+          }
+          return clean;
+        }
+        return n;
+      }
+      
+      if (Array.isArray(n)) {
+        return n.map(item => {
+          if (stripped) return item;
+          return recurse(item);
+        });
+      }
+      
+      if (n.props && n.props.children) {
+        return {
+          ...n,
+          props: {
+            ...n.props,
+            children: recurse(n.props.children)
+          }
+        };
+      }
+      
+      return n;
+    };
+    
+    return recurse(node);
+  };
+
+  const text = getElementText(children);
+  const match = text.trim().match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i);
+
+  if (match) {
+    const alertType = match[1].toUpperCase();
+    const cleanChildren = stripAlertPrefix(children);
+
+    let styles = {
+      border: "border-l-4 border-blue-500 dark:border-blue-400",
+      bg: "bg-blue-500/5 dark:bg-blue-500/5",
+      text: "text-blue-700 dark:text-blue-300",
+      title: "Note",
+      icon: <Info className="h-4 w-4" />
+    };
+
+    if (alertType === "TIP") {
+      styles = {
+        border: "border-l-4 border-emerald-500 dark:border-emerald-400",
+        bg: "bg-emerald-500/5 dark:bg-emerald-500/5",
+        text: "text-emerald-700 dark:text-emerald-300",
+        title: "Tip",
+        icon: <Lightbulb className="h-4 w-4" />
+      };
+    } else if (alertType === "IMPORTANT") {
+      styles = {
+        border: "border-l-4 border-violet-500 dark:border-violet-400",
+        bg: "bg-violet-500/5 dark:bg-violet-500/5",
+        text: "text-violet-700 dark:text-violet-300",
+        title: "Important",
+        icon: <AlertCircle className="h-4 w-4" />
+      };
+    } else if (alertType === "WARNING") {
+      styles = {
+        border: "border-l-4 border-amber-500 dark:border-amber-400",
+        bg: "bg-amber-500/5 dark:bg-amber-500/5",
+        text: "text-amber-700 dark:text-amber-300",
+        title: "Warning",
+        icon: <AlertTriangle className="h-4 w-4" />
+      };
+    } else if (alertType === "CAUTION") {
+      styles = {
+        border: "border-l-4 border-rose-500 dark:border-rose-400",
+        bg: "bg-rose-500/5 dark:bg-rose-500/5",
+        text: "text-rose-700 dark:text-rose-300",
+        title: "Caution",
+        icon: <AlertOctagon className="h-4 w-4" />
+      };
+    }
+
+    return (
+      <div className={`my-4 p-4 rounded-r-md ${styles.border} ${styles.bg} transition-all duration-200`}>
+        <div className={`flex items-center gap-2 mb-2 font-mono text-xs font-bold uppercase tracking-wider ${styles.text}`}>
+          {styles.icon}
+          <span>{styles.title}</span>
+        </div>
+        <div className="text-sm leading-relaxed text-foreground">
+          {cleanChildren}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <blockquote className="border-l-4 border-amber-500 pl-4 my-3 italic text-muted-foreground bg-muted/20 py-2 rounded-r">
+      {children}
+    </blockquote>
+  );
+};
+
+// Custom strikethrough component
+const Strikethrough = ({ children }: any) => (
+  <del className="line-through text-muted-foreground/75 bg-muted/25 px-0.5 rounded">
     {children}
-  </blockquote>
+  </del>
 );
+
+// Custom input component (for checklists)
+const Input = (props: any) => {
+  if (props.type === "checkbox") {
+    return (
+      <input
+        type="checkbox"
+        checked={props.checked}
+        readOnly
+        className="h-3.5 w-3.5 rounded border-gray-300 text-amber-500 focus:ring-amber-500 mr-2 dark:border-gray-600 dark:bg-gray-700 dark:focus:ring-offset-gray-800 accent-amber-500 cursor-default"
+      />
+    );
+  }
+  return <input {...props} />;
+};
 
 // Custom link component
 const Link = ({ href, children }: any) => (
@@ -167,33 +337,100 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
     mermaid.contentLoaded();
   }, [content]);
 
+  // Extract and parse YAML frontmatter
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
+  const match = content.match(frontmatterRegex);
+
+  let frontmatter: Record<string, any> | null = null;
+  let markdownContent = content;
+  let yamlError: string | null = null;
+
+  if (match) {
+    const rawYaml = match[1];
+    markdownContent = content.substring(match[0].length);
+    try {
+      const parsed = yaml.load(rawYaml);
+      if (typeof parsed === "object" && parsed !== null) {
+        frontmatter = parsed as Record<string, any>;
+      }
+    } catch (err: any) {
+      yamlError = err.message || "Failed to parse YAML";
+    }
+  }
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[]}
-      components={{
-        h1: Heading1,
-        h2: Heading2,
-        h3: Heading3,
-        h4: Heading4,
-        h5: Heading5,
-        h6: Heading6,
-        p: Paragraph,
-        ul: UnorderedList,
-        ol: OrderedList,
-        li: ListItem,
-        blockquote: Blockquote,
-        a: Link,
-        code: CodeBlock,
-        table: Table,
-        thead: TableHead,
-        tbody: TableBody,
-        tr: TableRow,
-        td: TableCell,
-        th: TableHeaderCell,
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+    <div className="space-y-4">
+      {/* YAML Frontmatter UI Panel */}
+      {frontmatter && (
+        <Card className="border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/5 overflow-hidden backdrop-blur-sm shadow-sm transition-all duration-200">
+          <CardHeader className="bg-amber-500/10 border-b border-amber-500/15 py-2 px-4 flex flex-row items-center justify-between">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-mono">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              Agent Metadata (YAML)
+            </CardTitle>
+            <Badge variant="outline" className="text-[10px] font-mono border-amber-500/30 text-amber-600 dark:text-amber-400 py-0 px-1.5 h-4.5 bg-amber-500/10 hover:bg-amber-500/20">
+              Parsed
+            </Badge>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Object.entries(frontmatter).map(([key, val]) => (
+                <div key={key} className="flex flex-col gap-1 border-b border-border/20 pb-2 sm:border-none sm:pb-0">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/80 font-bold">{key}</span>
+                  <div className="text-sm font-medium text-foreground">
+                    {renderValue(val)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* YAML Parsing Error Panel */}
+      {yamlError && (
+        <Card className="border-destructive/30 bg-destructive/5 overflow-hidden shadow-sm">
+          <CardHeader className="bg-destructive/10 border-b border-destructive/15 py-2 px-4">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-destructive flex items-center gap-1.5 font-mono">
+              YAML Parsing Error
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 font-mono text-xs text-destructive bg-destructive/5 whitespace-pre-wrap">
+            {yamlError}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Main Markdown Content */}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[]}
+        components={{
+          h1: Heading1,
+          h2: Heading2,
+          h3: Heading3,
+          h4: Heading4,
+          h5: Heading5,
+          h6: Heading6,
+          p: Paragraph,
+          ul: UnorderedList,
+          ol: OrderedList,
+          li: ListItem,
+          blockquote: Blockquote,
+          a: Link,
+          code: CodeBlock,
+          table: Table,
+          thead: TableHead,
+          tbody: TableBody,
+          tr: TableRow,
+          td: TableCell,
+          th: TableHeaderCell,
+          del: Strikethrough,
+          input: Input,
+        }}
+      >
+        {markdownContent}
+      </ReactMarkdown>
+    </div>
   );
 }

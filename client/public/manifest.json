@@ -3,13 +3,13 @@
   "name": "AgentForge MD - AI Agent Instructions Architect",
   "icons": [
     {
-      "src": "https://cdn.pixabay.com/photo/2021/08/04/13/06/software-6521720_1280.png",
-      "type": "image/png",
+      "src": "/icon-192.jpg",
+      "type": "image/jpeg",
       "sizes": "192x192"
     },
     {
-      "src": "https://cdn.pixabay.com/photo/2021/08/04/13/06/software-6521720_1280.png",
-      "type": "image/png",
+      "src": "/icon-512.jpg",
+      "type": "image/jpeg",
       "sizes": "512x512"
     }
   ],

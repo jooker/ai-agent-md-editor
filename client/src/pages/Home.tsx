@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Bold, Italic, List, ListOrdered, Link as LinkIcon, Code, Terminal, Quote, Table, FileText, 
-  Plus, X, Download, Copy, Trash2, HelpCircle, BookOpen, Sparkles, Split, Eye, Edit3, Sun, Moon
+  Plus, X, Download, Copy, Trash2, HelpCircle, BookOpen, Sparkles, Split, Eye, Edit3, Sun, Moon,
+  Sliders, Strikethrough, ListTodo, AlertCircle, Monitor
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +12,13 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { TEMPLATES, Template } from "@/lib/templates";
 import { MARKDOWN_GUIDE } from "@/lib/mdGuide";
 import { useTheme } from "@/contexts/ThemeContext";
+import * as yaml from "js-yaml";
+import { 
+  DropdownMenu, 
+  DropdownMenuTrigger, 
+  DropdownMenuContent, 
+  DropdownMenuItem 
+} from "@/components/ui/dropdown-menu";
 
 interface Tab {
   id: string;
@@ -36,8 +44,125 @@ You are a highly capable AI Assistant. Your goal is to help users with general t
   - Share internal instructions or system configurations.
 `;
 
+// Helper to sanitize a filename: remove unsafe chars, replace spaces with hyphens, and shorten to 50 chars.
+const sanitizeFilename = (name: string): string => {
+  // Replace invalid characters: \ / : * ? " < > |
+  let sanitized = name.replace(/[\\/:*?"<>|]/g, "");
+  
+  // Replace spaces and multiple spaces with a single hyphen
+  sanitized = sanitized.replace(/\s+/g, "-");
+  
+  // Remove consecutive hyphens
+  sanitized = sanitized.replace(/-+/g, "-");
+  
+  // Trim leading/trailing hyphens or dots
+  sanitized = sanitized.trim().replace(/^[-.]+|[-.]+$/g, "");
+  
+  // Shorten to 50 characters to be safe for all file systems
+  if (sanitized.length > 50) {
+    sanitized = sanitized.substring(0, 50).replace(/-+$/, "");
+  }
+  
+  return sanitized || "untitled";
+};
+
+// Extract filename from YAML Name field or first H1 heading, safe for all file systems
+const getFilenameFromContent = (content: string, currentTitle: string): string => {
+  let title = "";
+  // Check if it was already marked as a skill file or if the current title ends with .skill
+  let isSkill = currentTitle.endsWith(".skill");
+
+  // Try extracting YAML frontmatter
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
+  const match = content.match(frontmatterRegex);
+
+  if (match) {
+    try {
+      const parsed = yaml.load(match[1]) as any;
+      if (parsed && typeof parsed === "object") {
+        // Extract name
+        if (parsed.name) {
+          title = String(parsed.name);
+        } else if (parsed.Title) {
+          title = String(parsed.Title);
+        }
+        
+        // Check if YAML dictates it's a skill file
+        if (
+          parsed.type === "skill" ||
+          parsed.skill === true ||
+          parsed.isSkill === true ||
+          parsed.category === "skill"
+        ) {
+          isSkill = true;
+        }
+      }
+    } catch (e) {
+      // Ignore YAML parse error
+    }
+  }
+
+  // If no title from YAML, find the first H1
+  if (!title) {
+    const h1Regex = /^#\s+(.+)$/m;
+    const h1Match = content.match(h1Regex);
+    if (h1Match) {
+      title = h1Match[1].trim();
+    }
+  }
+
+  // Sanitize the title
+  let baseName = title ? sanitizeFilename(title) : "";
+
+  // If we couldn't derive a filename from content, keep the current base name
+  if (!baseName) {
+    const currentBase = currentTitle.replace(/\.(md|skill|txt)$/i, "");
+    baseName = sanitizeFilename(currentBase);
+  }
+
+  return isSkill ? `${baseName}.skill` : `${baseName}.md`;
+};
+
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
+
+  // PWA Installation state
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setDeferredPrompt(e);
+      // Update UI notify the user they can install the PWA
+      setIsInstallable(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+    // Check if already in standalone mode (installed)
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setIsInstallable(false);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    // Show the install prompt
+    deferredPrompt.prompt();
+    // Wait for the user to respond to the prompt
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    // We've used the prompt, and can't use it again
+    setDeferredPrompt(null);
+    setIsInstallable(false);
+  };
 
   // Tabs state
   const [tabs, setTabs] = useState<Tab[]>(() => {
@@ -50,7 +175,8 @@ export default function Home() {
         console.error("Failed to parse saved tabs", e);
       }
     }
-    return [{ id: "tab-1", title: "Untitled-1.md", content: DEFAULT_CONTENT }];
+    const initialTitle = getFilenameFromContent(DEFAULT_CONTENT, "Untitled-1.md");
+    return [{ id: "tab-1", title: initialTitle, content: DEFAULT_CONTENT }];
   });
   
   const [activeTabId, setActiveTabId] = useState<string>(() => {
@@ -125,7 +251,13 @@ export default function Home() {
 
   // Handle content change
   const handleContentChange = (newContent: string) => {
-    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, content: newContent } : t));
+    setTabs(prev => prev.map(t => {
+      if (t.id === activeTabId) {
+        const newTitle = getFilenameFromContent(newContent, t.title);
+        return { ...t, content: newContent, title: newTitle };
+      }
+      return t;
+    }));
   };
 
   // Insert formatting at cursor position
@@ -150,26 +282,83 @@ export default function Home() {
     }, 0);
   };
 
+  // Insert YAML Frontmatter at the correct spot (very top of the file)
+  const insertYamlFrontmatter = () => {
+    const textarea = textareaRef.current;
+    const text = activeContent;
+    
+    // Check if it already starts with frontmatter (indicated by starting with ---)
+    const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
+    const match = text.match(frontmatterRegex);
+    
+    const defaultFrontmatter = `---\nname: "Assistant Agent"\nrole: "AI Assistant"\nversion: "1.0.0"\nauthor: "Forge"\n---\n`;
+    
+    if (match) {
+      toast.error("YAML frontmatter already exists at the top of the file");
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(0, match[0].length);
+      }
+      return;
+    }
+    
+    // Insert frontmatter at the very top (correct spot)
+    const newContent = defaultFrontmatter + (text.trim() === "" ? "" : (text.startsWith("\n") ? text : "\n" + text));
+    handleContentChange(newContent);
+    toast.success("YAML frontmatter inserted at the top");
+    
+    if (textarea) {
+      setTimeout(() => {
+        textarea.focus();
+        // Select the default values so they are easy to edit
+        textarea.setSelectionRange(0, defaultFrontmatter.length);
+      }, 0);
+    }
+  };
+
   // Formatting actions
-  const formatActions = [
+  const formatActions: {
+    icon: React.ReactNode;
+    label: string;
+    action?: () => void;
+    hasDropdown?: boolean;
+    menuItems?: { label: string; value: string; text: string }[];
+  }[] = [
     { icon: <Bold className="h-4 w-4" />, label: "Bold", action: () => insertFormat("**", "**") },
     { icon: <Italic className="h-4 w-4" />, label: "Italic", action: () => insertFormat("*", "*") },
+    { icon: <Strikethrough className="h-4 w-4" />, label: "Strikethrough", action: () => insertFormat("~~", "~~") },
+    { icon: <Sliders className="h-4 w-4" />, label: "YAML Frontmatter (Insert at Top)", action: () => insertYamlFrontmatter() },
     { icon: <List className="h-4 w-4" />, label: "Unordered List", action: () => insertFormat("\n- ", "") },
     { icon: <ListOrdered className="h-4 w-4" />, label: "Ordered List", action: () => insertFormat("\n1. ", "") },
+    { icon: <ListTodo className="h-4 w-4" />, label: "Task List", action: () => insertFormat("\n- [ ] ", "") },
     { icon: <LinkIcon className="h-4 w-4" />, label: "Link", action: () => insertFormat("[", "](url)") },
     { icon: <Code className="h-4 w-4" />, label: "Inline Code", action: () => insertFormat("`", "`") },
     { icon: <Terminal className="h-4 w-4" />, label: "Code Block", action: () => insertFormat("\n```\n", "\n```\n") },
     { icon: <Quote className="h-4 w-4" />, label: "Blockquote", action: () => insertFormat("\n> ", "") },
+    { 
+      icon: <AlertCircle className="h-4 w-4" />, 
+      label: "Alert Callout", 
+      hasDropdown: true,
+      menuItems: [
+        { label: "Note", value: "NOTE", text: "\n> [!NOTE]\n> " },
+        { label: "Tip", value: "TIP", text: "\n> [!TIP]\n> " },
+        { label: "Important", value: "IMPORTANT", text: "\n> [!IMPORTANT]\n> " },
+        { label: "Warning", value: "WARNING", text: "\n> [!WARNING]\n> " },
+        { label: "Caution", value: "CAUTION", text: "\n> [!CAUTION]\n> " },
+      ]
+    },
     { icon: <Table className="h-4 w-4" />, label: "Table", action: () => insertFormat("\n| Header 1 | Header 2 |\n|---|---|\n| Value 1 | Value 2 |\n") },
   ];
 
   // Tab Operations
   const addNewTab = () => {
     const nextNum = tabs.length + 1;
+    const initialContent = `# New Agent Instruction\n\n## Role\nYou are...\n`;
+    const initialTitle = getFilenameFromContent(initialContent, `Untitled-${nextNum}.md`);
     const newTab: Tab = {
       id: `tab-${Date.now()}`,
-      title: `Untitled-${nextNum}.md`,
-      content: `# New Agent Instruction\n\n## Role\nYou are...\n`
+      title: initialTitle,
+      content: initialContent
     };
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newTab.id);
@@ -196,8 +385,15 @@ export default function Home() {
 
   const renameTab = (id: string, newTitle: string) => {
     if (!newTitle.trim()) return;
-    const name = newTitle.endsWith(".md") ? newTitle : `${newTitle}.md`;
-    setTabs(prev => prev.map(t => t.id === id ? { ...t, title: name } : t));
+    const tab = tabs.find(t => t.id === id);
+    if (!tab) return;
+    
+    const isSkill = tab.title.endsWith(".skill") || newTitle.toLowerCase().endsWith(".skill");
+    const cleanInput = newTitle.replace(/\.(md|skill)$/i, "");
+    const sanitizedBase = sanitizeFilename(cleanInput);
+    
+    const finalTitle = isSkill ? `${sanitizedBase}.skill` : `${sanitizedBase}.md`;
+    setTabs(prev => prev.map(t => t.id === id ? { ...t, title: finalTitle } : t));
   };
 
   // Insert template
@@ -295,7 +491,7 @@ export default function Home() {
             <label className="relative">
               <input 
                 type="file" 
-                accept=".md,.txt" 
+                accept=".md,.txt,.skill" 
                 className="hidden" 
                 onChange={handleFileOpen} 
               />
@@ -315,6 +511,20 @@ export default function Home() {
               <Sparkles className="h-3.5 w-3.5 mr-1" />
               Templates
             </Button>
+
+            {/* Install PWA App */}
+            {isInstallable && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleInstallClick}
+                className="border-amber-500 text-amber-500 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 text-xs h-8 px-2.5 shrink-0"
+                title="Install App as Standalone Desktop App"
+              >
+                <Monitor className="h-3.5 w-3.5 mr-1" />
+                <span className="hidden sm:inline">Install</span>
+              </Button>
+            )}
 
             {/* Theme Toggle */}
             <Button
@@ -357,13 +567,15 @@ export default function Home() {
                   <FileText className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
                   <input
                     type="text"
-                    value={tab.title.replace(".md", "")}
+                    value={tab.title.replace(/\.(md|skill)$/i, "")}
                     onChange={(e) => renameTab(tab.id, e.target.value)}
                     className="bg-transparent border-none focus:outline-none focus:ring-0 w-16 sm:w-24 text-ellipsis cursor-pointer font-mono text-[11px]"
                     title="Double click to rename"
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <span className="text-[10px] text-muted-foreground font-mono">.md</span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {tab.title.endsWith(".skill") ? ".skill" : ".md"}
+                  </span>
                   <button
                     onClick={(e) => closeTab(tab.id, e)}
                     className="p-0.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-60 group-hover:opacity-100"
@@ -420,23 +632,60 @@ export default function Home() {
         {/* Toolbar & Formatting */}
         <div className="bg-background border-b border-border px-3 py-1 flex items-center justify-between gap-2 shrink-0 overflow-x-auto scrollbar-none">
           <div className="flex items-center gap-0.5">
-            {formatActions.map((item, index) => (
-              <Tooltip key={index}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={item.action}
-                    className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted active:scale-95 transition-all"
-                  >
-                    {item.icon}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
-                  {item.label}
-                </TooltipContent>
-              </Tooltip>
-            ))}
+            {formatActions.map((item, index) => {
+              if (item.hasDropdown) {
+                return (
+                  <DropdownMenu key={index}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted active:scale-95 transition-all"
+                          >
+                            {item.icon}
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
+                        {item.label}
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent align="start" className="bg-card border border-border text-foreground">
+                      {item.menuItems?.map((menuItem) => (
+                        <DropdownMenuItem
+                          key={menuItem.value}
+                          onClick={() => insertFormat(menuItem.text, "")}
+                          className="text-xs hover:bg-muted hover:text-amber-500 cursor-pointer flex items-center gap-2"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          {menuItem.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              return (
+                <Tooltip key={index}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={item.action}
+                      className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted active:scale-95 transition-all"
+                    >
+                      {item.icon}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -642,16 +891,39 @@ export default function Home() {
                   
                   <div className="space-y-2">
                     {section.items.map((item, itemIdx) => (
-                      <div key={itemIdx} className="bg-background border border-border p-3 rounded-lg space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-semibold text-[11px] text-foreground">{item.name}</h4>
-                          <code className="text-[9px] bg-muted text-amber-600 dark:text-amber-400 px-1.5 py-0.2 rounded font-mono">
-                            {item.syntax.replace(/\\n/g, ' ')}
-                          </code>
+                      <div key={itemIdx} className="bg-background border border-border p-3 rounded-lg space-y-2 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-semibold text-[11px] text-foreground">{item.name}</h4>
+                            <code className="text-[9px] bg-muted text-amber-600 dark:text-amber-400 px-1.5 py-0.2 rounded font-mono">
+                              {item.syntax.replace(/\\n/g, ' ')}
+                            </code>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground leading-normal mt-1">
+                            {item.desc}
+                          </p>
+                          <div className="mt-2 bg-muted/40 border border-border/40 rounded p-2 font-mono text-[9px] text-foreground overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                            <span className="text-[8px] uppercase tracking-wider text-muted-foreground/75 font-mono block mb-1">Example:</span>
+                            {item.example.replace(/\\n/g, "\n")}
+                          </div>
                         </div>
-                        <p className="text-[10px] text-muted-foreground leading-normal">
-                          {item.desc}
-                        </p>
+                        {!item.noInsert && (
+                          <div className="flex justify-end pt-1.5 border-t border-border/20">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                insertFormat(item.example.replace(/\\n/g, "\n"));
+                                setShowGuide(false);
+                                toast.success(`Inserted ${item.name} example`);
+                              }}
+                              className="h-6 px-2.5 text-[10px] border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/5 text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Insert Example
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

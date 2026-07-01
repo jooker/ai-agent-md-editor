@@ -2,9 +2,20 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import { exec } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function openBrowser(url: string) {
+  const start = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  const cmd = process.platform === "win32" ? `start "" "${url}"` : `${start} "${url}"`;
+  exec(cmd, (err) => {
+    if (err) {
+      console.error(`Failed to open browser: ${err.message}`);
+    }
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -23,11 +34,30 @@ async function startServer() {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
-  const port = process.env.PORT || 3000;
+  let port = parseInt(process.env.PORT || "3000", 10);
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  function listen(portToTry: number) {
+    server.listen(portToTry, () => {
+      const url = `http://localhost:${portToTry}/`;
+      console.log(`Server running on ${url}`);
+      // Open browser in production mode on start
+      if (process.env.NODE_ENV === "production") {
+        openBrowser(url);
+      }
+    });
+  }
+
+  server.on("error", (e: any) => {
+    if (e.code === "EADDRINUSE") {
+      console.log(`Port ${port} is occupied. Trying port ${port + 1}...`);
+      port++;
+      listen(port);
+    } else {
+      console.error("Server error:", e);
+    }
   });
+
+  listen(port);
 }
 
 startServer().catch(console.error);
