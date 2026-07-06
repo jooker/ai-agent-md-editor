@@ -407,7 +407,7 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
 
       {/* Live Package Explorer Preview Modal */}
       <Dialog open={!!previewSkill || loadingPreview} onOpenChange={() => { if (!loadingPreview) { setPreviewSkill(null); } }}>
-        <DialogContent className="w-[calc(100vw-200px)] max-w-fit h-[calc(100vh-200px)] max-h-none bg-card text-foreground flex flex-col p-0 overflow-hidden shadow-xl rounded-xl border border-border">
+        <DialogContent className="w-[calc(100vw-200px)] max-w-none h-[calc(100vh-200px)] max-h-none bg-card text-foreground flex flex-col p-0 overflow-hidden shadow-xl rounded-xl border border-border">
           <DialogTitle className="sr-only">Skill Preview</DialogTitle>
           <DialogDescription className="sr-only">Detailed preview of raw skill markdown files.</DialogDescription>
           {loadingPreview && (
@@ -447,7 +447,7 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
               {/* Explorer Layout */}
               <div className="flex-grow overflow-hidden flex min-h-0">
                 {/* Left Explorer Panel */}
-                <div className="w-[15%] min-w-[15%] max-w-[15%] border-r border-border bg-sidebar/10 overflow-y-auto p-3 flex flex-col justify-between shrink-0">
+                <div className="w-[25%] min-w-[25%] max-w-[25%] border-r border-border bg-sidebar/10 overflow-y-auto p-3 flex flex-col justify-between shrink-0">
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground mb-2">Package Files</h4>
@@ -493,7 +493,7 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
                 </div>
 
                 {/* Right Code Viewer / Markdown HTML Preview */}
-                <div className="w-[85%] min-w-[85%] max-w-[85%] overflow-y-auto p-5 bg-background font-sans text-xs leading-relaxed text-foreground border-l border-border min-h-0">
+                <div className="w-[75%] min-w-[75%] max-w-[75%] overflow-y-auto p-5 bg-background font-sans text-xs leading-relaxed text-foreground border-l border-border min-h-0">
                   {(() => {
                     const activeFile = previewSkill.files?.find(f => f.path === selectedFilePath);
                     const contents = activeFile?.contents || "";
