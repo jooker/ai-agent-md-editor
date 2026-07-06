@@ -1,0 +1,15 @@
+{
+  "id": "version-bumper",
+  "name": "SemVer Version Bumper",
+  "description": "Automatically synchronizes and bumps versions in both SKILL.md (YAML frontmatter) and extension.json.",
+  "version": "1.0.0",
+  "author": "Antigravity Agent",
+  "category": "Developer Tools",
+  "enabled": true,
+  "config": {
+    "targetFiles": [
+      "SKILL.md",
+      "extension.json"
+    ]
+  }
+}

@@ -12,7 +12,19 @@ import {
   Eye,
   Key,
   HelpCircle,
-  Plus
+  Plus,
+  Image,
+  Paperclip,
+  Save,
+  Trash2,
+  Folder,
+  FolderOpen,
+  File,
+  ChevronRight,
+  ChevronDown,
+  X,
+  BookOpen,
+  Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +39,13 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
-
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { SUGGESTED_PROMPTS_DB } from "@/db/suggestedPrompts";
 interface Message {
   role: "assistant" | "user";
   content: string;
@@ -38,7 +56,9 @@ interface AgentChatPanelProps {
   activeContent: string;
   onInsertContent: (text: string) => void;
   onCreateWorkspaceFile?: (filename: string, content: string) => void;
+  onCreateWorkspaceFolder?: (folderName: string) => void;
   activeWorkspaceOpen?: boolean;
+  activeWorkspaceDir?: string;
 }
 
 interface CodeBlockInfo {
@@ -47,6 +67,7 @@ interface CodeBlockInfo {
   content: string;
   isFilename: boolean;
   associatedFilename?: string;
+  isDirectory?: boolean;
 }
 
 const parseMessageCodeBlocks = (markdown: string): CodeBlockInfo[] => {
@@ -61,12 +82,17 @@ const parseMessageCodeBlocks = (markdown: string): CodeBlockInfo[] => {
     const isFilename = lines.length === 1 && 
                        /^[\w-_./\\]+\.[a-zA-Z0-9]+$/.test(lines[0]) &&
                        lines[0].length < 100;
+    const isDirectoryName = lines.length === 1 &&
+                            lang === "directory" &&
+                            /^[\w-_./\\]+$/.test(lines[0]) &&
+                            lines[0].length < 100;
     
     blocks.push({
       index,
       language: lang,
       content,
-      isFilename
+      isFilename,
+      isDirectory: isDirectoryName
     });
     index++;
   }
@@ -113,6 +139,17 @@ const PRESETS = [
       { label: "Python Skill Validator", prompt: "Write a simple Python script to validate if a directory contains a SKILL.md file and check if it starts with '---'." },
       { label: "Bash Executor Script", prompt: "Write a cross-platform bash script to compress and package a skill directory for sharing." }
     ]
+  },
+  {
+    name: "New Project",
+    role: "Lead System Architect",
+    avatar: "🚀",
+    desc: "Scaffolds, builds, and manages directory structures and full project workspaces based on your ideas.",
+    greeting: "Hello! I am the Project Builder. Describe your app or project idea, and I'll generate the architecture, folder structure, and files. We are starting in Plan Mode, so I will draft a detailed layout before writing files.",
+    options: [
+      { label: "React Portfolio", prompt: "Plan and scaffold a beautiful responsive React portfolio website with clean components." },
+      { label: "Node API Template", prompt: "Create an Express REST API with TypeScript, Prisma ORM, and validation middleware." }
+    ]
   }
 ];
 
@@ -134,12 +171,372 @@ const OPENAI_MODELS = [
   { value: "o3-mini", label: "o3 Mini" },
 ];
 
-export function AgentChatPanel({ activeContent, onInsertContent, onCreateWorkspaceFile, activeWorkspaceOpen }: AgentChatPanelProps) {
+const INPUT_CHIPS = [
+  { label: "Create slides", prompt: "Create a script to generate a beautiful presentation about modern Web Design trends." },
+  { label: "Build website", prompt: "Scaffold a complete modern responsive web landing page for a SaaS startup using CSS and vanilla JS." },
+  { label: "Develop desktop apps", prompt: "Plan a desktop-based Electron app directory structure for an offline Markdown editor." },
+  { label: "Design", prompt: "Draft design system color tokens, font sizes, and layout patterns for a premium dark mode dashboard." },
+  { label: "More", prompt: "Explain the project structure, how to structure modules, and setup a robust CI/CD workflow." }
+];
+
+interface AttachSkillDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onAttach: (item: { name: string; path: string; content: string }) => void;
+  activeWorkspaceDir?: string;
+  activeWorkspaceOpen?: boolean;
+}
+
+function AttachSkillDialog({ open, onClose, onAttach, activeWorkspaceDir, activeWorkspaceOpen }: AttachSkillDialogProps) {
+  const [activeTab, setActiveTab] = useState<"library" | "workspace">("library");
+  
+  // Library tab states
+  const [categories, setCategories] = useState<Record<string, string[]>>({});
+  const [libraryPath, setLibraryPath] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedSkill, setSelectedSkill] = useState<string>("");
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
+
+  // Workspace tab states
+  const [workspaceTree, setWorkspaceTree] = useState<any>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [selectedWorkspaceFilePath, setSelectedWorkspaceFilePath] = useState<string>("");
+  const [expandedDirs, setExpandedDirs] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    if (activeTab === "library") {
+      loadLibrary();
+    } else {
+      loadWorkspace();
+    }
+  }, [open, activeTab, activeWorkspaceDir]);
+
+  const loadLibrary = async () => {
+    setLibraryLoading(true);
+    try {
+      const res = await fetch("/api/library");
+      const data = await res.json();
+      if (data.success) {
+        setCategories(data.categories);
+        setLibraryPath(data.path);
+        const tabs = Object.keys(data.categories);
+        if (tabs.length > 0 && !selectedCategory) {
+          setSelectedCategory(tabs[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading library in attach dialog:", err);
+    } finally {
+      setLibraryLoading(false);
+    }
+  };
+
+  const loadWorkspace = async () => {
+    if (!activeWorkspaceDir) return;
+    setWorkspaceLoading(true);
+    try {
+      const res = await fetch("/api/workspace/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dirPath: activeWorkspaceDir })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setWorkspaceTree(data.tree);
+      }
+    } catch (err) {
+      console.error("Error loading workspace in attach dialog:", err);
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  };
+
+  const handleAttachLibrarySkill = async () => {
+    if (!selectedCategory || !selectedSkill || !libraryPath) return;
+    try {
+      let filePath = `${libraryPath}/${selectedCategory}/${selectedSkill}/SKILL.md`.replace(/\\/g, "/");
+      let res = await fetch("/api/workspace/file/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath })
+      });
+      let data = await res.json();
+      if (!data.success) {
+        // Try lowercase skill.md
+        filePath = `${libraryPath}/${selectedCategory}/${selectedSkill}/skill.md`.replace(/\\/g, "/");
+        res = await fetch("/api/workspace/file/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filePath })
+        });
+        data = await res.json();
+      }
+
+      if (data.success) {
+        onAttach({
+          name: `${selectedSkill}/SKILL.md`,
+          path: filePath,
+          content: data.content
+        });
+        toast.success(`Attached skill: ${selectedSkill}`);
+        onClose();
+      } else {
+        toast.error("Could not find SKILL.md or skill.md inside the selected folder.");
+      }
+    } catch (err: any) {
+      toast.error("Error attaching skill: " + err.message);
+    }
+  };
+
+  const handleAttachWorkspaceFile = async () => {
+    if (!selectedWorkspaceFilePath) return;
+    try {
+      const res = await fetch("/api/workspace/file/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath: selectedWorkspaceFilePath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const name = selectedWorkspaceFilePath.split("/").pop() || "file.md";
+        onAttach({
+          name,
+          path: selectedWorkspaceFilePath,
+          content: data.content
+        });
+        toast.success(`Attached file: ${name}`);
+        onClose();
+      } else {
+        toast.error("Failed to read file: " + data.error);
+      }
+    } catch (err: any) {
+      toast.error("Error reading file: " + err.message);
+    }
+  };
+
+  const renderWorkspaceTree = (node: any) => {
+    if (!node) return null;
+    if (node.isDir) {
+      const isExpanded = expandedDirs[node.path];
+      return (
+        <div key={node.path} className="pl-3">
+          <button
+            onClick={() => setExpandedDirs(prev => ({ ...prev, [node.path]: !prev[node.path] }))}
+            className="flex items-center gap-1.5 py-1 text-xs text-foreground hover:text-amber-500 font-semibold"
+          >
+            {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+            <Folder className="h-3.5 w-3.5 text-amber-500 fill-amber-500/10" />
+            <span>{node.name}</span>
+          </button>
+          {isExpanded && node.children?.map((child: any) => renderWorkspaceTree(child))}
+        </div>
+      );
+    } else {
+      const isSelected = selectedWorkspaceFilePath === node.path;
+      return (
+        <div key={node.path} className="pl-6">
+          <button
+            onClick={() => setSelectedWorkspaceFilePath(node.path)}
+            className={`flex items-center gap-1.5 py-1 text-xs text-left w-full transition-colors ${isSelected ? "text-amber-500 font-bold bg-amber-500/5 px-1.5 rounded" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <File className="h-3.5 w-3.5" />
+            <span>{node.name}</span>
+          </button>
+        </div>
+      );
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o: boolean) => !o && onClose()}>
+      <DialogContent className="max-w-xl h-[70vh] flex flex-col p-0 overflow-hidden bg-background border border-border">
+        {/* Header */}
+        <div className="p-4 border-b border-border flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <Paperclip className="h-4.5 w-4.5 text-amber-500" />
+            <DialogTitle className="text-sm font-bold text-foreground">Attach Skill File or Workspace File</DialogTitle>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7 text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Tab selector */}
+        <div className="px-4 py-2 border-b border-border bg-muted/20 flex gap-2 shrink-0 select-none">
+          <Button
+            size="sm"
+            type="button"
+            variant={activeTab === "library" ? "default" : "ghost"}
+            onClick={() => setActiveTab("library")}
+            className={`text-xs h-7 ${activeTab === "library" ? "bg-amber-500 hover:bg-amber-600 text-black font-bold" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <BookOpen className="h-3.5 w-3.5 mr-1" /> Library Skills
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            variant={activeTab === "workspace" ? "default" : "ghost"}
+            onClick={() => setActiveTab("workspace")}
+            className={`text-xs h-7 ${activeTab === "workspace" ? "bg-amber-500 hover:bg-amber-600 text-black font-bold" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <FolderOpen className="h-3.5 w-3.5 mr-1" /> Workspace Files
+          </Button>
+        </div>
+
+        {/* Tab contents */}
+        <div className="flex-grow overflow-hidden flex min-h-0">
+          {activeTab === "library" ? (
+            <div className="flex-grow flex overflow-hidden min-h-0">
+              {libraryLoading ? (
+                <div className="flex-grow flex items-center justify-center p-8 text-xs text-muted-foreground">
+                  <div className="h-5 w-5 border-2 border-amber-500 border-t-transparent animate-spin rounded-full mr-2" />
+                  Loading Library...
+                </div>
+              ) : (
+                <>
+                  {/* Category sidebar */}
+                  <div className="w-[30%] border-r border-border bg-sidebar/20 overflow-y-auto p-2 shrink-0">
+                    <h4 className="text-[9px] uppercase tracking-wider font-bold text-muted-foreground px-2 py-1 mb-1">Categories</h4>
+                    {Object.keys(categories).map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => { setSelectedCategory(cat); setSelectedSkill(""); }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors flex items-center justify-between ${selectedCategory === cat ? "bg-amber-500/10 text-amber-500 font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted/40"}`}
+                      >
+                        <span className="truncate">{cat}</span>
+                        <Badge variant="outline" className="text-[9px] px-1 bg-muted/40 text-muted-foreground border-none">
+                          {categories[cat]?.length || 0}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Skills lists */}
+                  <div className="w-[70%] overflow-y-auto p-3 flex flex-col min-h-0 bg-background/50">
+                    <div className="mb-3 relative shrink-0">
+                      <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search skills..."
+                        value={librarySearch}
+                        onChange={e => setLibrarySearch(e.target.value)}
+                        className="pl-8 h-7.5 text-xs focus-visible:ring-amber-500/35"
+                      />
+                    </div>
+                    
+                    <div className="flex-grow overflow-y-auto space-y-1">
+                      {selectedCategory && categories[selectedCategory] ? (
+                        categories[selectedCategory]
+                          .filter(skill => skill.toLowerCase().includes(librarySearch.toLowerCase()))
+                          .map(skill => {
+                            const isSelected = selectedSkill === skill;
+                            return (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => setSelectedSkill(skill)}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 border transition-all ${isSelected ? "border-amber-500/40 bg-amber-500/5 text-amber-500 font-bold" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
+                              >
+                                <BookOpen className="h-3.5 w-3.5 text-amber-500/80 shrink-0" />
+                                <span className="truncate">{skill}</span>
+                              </button>
+                            );
+                          })
+                      ) : (
+                        <div className="text-xs text-muted-foreground text-center py-8">Select a category to view skills</div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="flex-grow overflow-y-auto p-4 flex flex-col min-h-0">
+              {!activeWorkspaceOpen ? (
+                <div className="flex-grow flex flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground gap-2">
+                  <FolderOpen className="h-8 w-8 text-muted-foreground/40" />
+                  <p>No workspace folder currently open.</p>
+                  <p className="text-[10px] text-muted-foreground/80 max-w-xs">Open a workspace in the editor sidebar first to attach project files.</p>
+                </div>
+              ) : workspaceLoading ? (
+                <div className="flex-grow flex items-center justify-center p-8 text-xs text-muted-foreground">
+                  <div className="h-5 w-5 border-2 border-amber-500 border-t-transparent animate-spin rounded-full mr-2" />
+                  Loading Workspace...
+                </div>
+              ) : (
+                <div className="flex-grow overflow-y-auto border border-border bg-sidebar/10 rounded-lg p-3 min-h-0 font-mono">
+                  {workspaceTree && Array.isArray(workspaceTree) ? (
+                    workspaceTree.length > 0 ? (
+                      workspaceTree.map(node => renderWorkspaceTree(node))
+                    ) : (
+                      <div className="text-xs text-muted-foreground">Workspace tree is empty.</div>
+                    )
+                  ) : workspaceTree ? (
+                    renderWorkspaceTree(workspaceTree)
+                  ) : (
+                    <div className="text-xs text-muted-foreground">Workspace tree is empty.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="p-3 border-t border-border flex justify-end gap-2 bg-muted/10 shrink-0 select-none">
+          <Button size="sm" type="button" variant="ghost" onClick={onClose} className="text-xs h-8">Cancel</Button>
+          {activeTab === "library" ? (
+            <Button
+              size="sm"
+              type="button"
+              disabled={!selectedSkill || libraryLoading}
+              onClick={handleAttachLibrarySkill}
+              className="text-xs h-8 bg-amber-500 hover:bg-amber-600 text-black font-semibold min-w-[90px]"
+            >
+              Attach Skill
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              type="button"
+              disabled={!selectedWorkspaceFilePath || workspaceLoading}
+              onClick={handleAttachWorkspaceFile}
+              className="text-xs h-8 bg-amber-500 hover:bg-amber-600 text-black font-semibold min-w-[90px]"
+            >
+              Attach File
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function AgentChatPanel({ activeContent, onInsertContent, onCreateWorkspaceFile, onCreateWorkspaceFolder, activeWorkspaceOpen, activeWorkspaceDir }: AgentChatPanelProps) {
   const [activePreset, setActivePreset] = useState(PRESETS[0]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Multimodal & Context attachment states
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
+  const [attachedSkills, setAttachedSkills] = useState<Array<{ name: string; path: string; content: string }>>([]);
+  const [showAttachDialog, setShowAttachDialog] = useState(false);
+  const [showSaveSessionDialog, setShowSaveSessionDialog] = useState(false);
+  const [sessionFileName, setSessionFileName] = useState("");
+  const [planMode, setPlanMode] = useState(true);
+  
+  // Suggested Prompts states
+  const getRandomPrompts = (presetName: string, count = 3) => {
+    const allPrompts = SUGGESTED_PROMPTS_DB[presetName] || [];
+    if (allPrompts.length === 0) return [];
+    const shuffled = [...allPrompts].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, count);
+  };
+  const [suggestedPrompts, setSuggestedPrompts] = useState<Array<{ label: string; prompt: string }>>([]);
   
   // LLM Config
   const [apiKey, setApiKey] = useState("");
@@ -251,6 +648,7 @@ If this is due to an invalid or exhausted key, you can:
     setMessages([
       { role: "assistant", content: activePreset.greeting, presetType: activePreset.name }
     ]);
+    setSuggestedPrompts(getRandomPrompts(activePreset.name, 3));
 
     // Load server configurations for environment variable fallbacks
     fetch("/api/config")
@@ -305,7 +703,36 @@ If this is due to an invalid or exhausted key, you can:
     setMessages([
       { role: "assistant", content: preset.greeting, presetType: preset.name }
     ]);
+    setSuggestedPrompts(getRandomPrompts(preset.name, 3));
+    if (preset.name === "New Project") {
+      setPlanMode(true);
+    }
   };
+
+  // Automatically switch preset and mode when workspace opens/changes
+  useEffect(() => {
+    if (activeWorkspaceDir) {
+      const projectPreset = PRESETS[3] || PRESETS.find(p => p.name === "New Project");
+      if (projectPreset && activePreset.name !== projectPreset.name) {
+        setActivePreset(projectPreset);
+        setMessages([
+          { role: "assistant", content: projectPreset.greeting, presetType: projectPreset.name }
+        ]);
+        setSuggestedPrompts(getRandomPrompts(projectPreset.name, 3));
+      }
+      setPlanMode(false); // Default to Build Mode when workspace is open
+    } else {
+      const defaultPreset = PRESETS[0];
+      if (defaultPreset && activePreset.name !== defaultPreset.name) {
+        setActivePreset(defaultPreset);
+        setMessages([
+          { role: "assistant", content: defaultPreset.greeting, presetType: defaultPreset.name }
+        ]);
+        setSuggestedPrompts(getRandomPrompts(defaultPreset.name, 3));
+      }
+      setPlanMode(true); // Default to Plan Mode when no workspace is open
+    }
+  }, [activeWorkspaceDir]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -469,11 +896,166 @@ echo "✅ Packaged $SKILL_NAME into $SKILL_NAME.tar.gz"
     return "I am ready to help you build and configure your Agent Skill package. Ask me any question!";
   };
 
+  const WORKSPACE_AUTOMATION_INSTRUCTIONS = `
+Workspace Automation Instructions:
+You can automatically create new files and directory structures (projects) in the user's workspace when they ask.
+When the user asks you to create/make/generate/setup/write/add a file or a project:
+1. To create a file, you MUST output a code block containing ONLY the file path (relative to the workspace root, e.g. "src/index.js"), followed immediately by a code block containing the file's content.
+Example:
+\`\`\`
+src/index.js
+\`\`\`
+\`\`\`javascript
+console.log("hello");
+\`\`\`
+2. To create a folder or empty project directory, output a code block with language "directory" containing the relative folder path.
+Example:
+\`\`\`directory
+my-new-project
+\`\`\`
+Always use these exact formats whenever requested to create files or projects. The workspace IDE will parse and execute the creation automatically.`;
+
+  // Image upload handler
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachedImage(reader.result as string);
+      toast.success("Image attached to chat");
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read image file");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const getFormattedDateTime = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    const seconds = String(d.getSeconds()).padStart(2, "0");
+    return `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+  };
+
+  const handleSaveSessionClick = () => {
+    if (messages.length <= 1) {
+      toast.error("Chat session history is empty");
+      return;
+    }
+    const defaultName = `${activePreset.name.replace(/\s+/g, "_")}_${getFormattedDateTime()}`;
+    setSessionFileName(defaultName);
+    setShowSaveSessionDialog(true);
+  };
+
+  const handleSaveSessionSubmit = () => {
+    if (!sessionFileName.trim()) return;
+    
+    // Format session markdown
+    let md = `# Agent Chat Session - ${activePreset.name}\n`;
+    md += `**Date**: ${new Date().toLocaleString()}\n`;
+    md += `**Workspace**: ${activeWorkspaceDir || "None"}\n\n`;
+    md += `--- \n\n`;
+    
+    messages.forEach(msg => {
+      const roleName = msg.role === "user" ? "User" : (msg.presetType || activePreset.name);
+      md += `### 👤 ${roleName}\n\n`;
+      md += `${msg.content}\n\n`;
+      md += `---\n\n`;
+    });
+
+    if (onCreateWorkspaceFile) {
+      // Save inside a "sessions" folder
+      const filename = `sessions/${sessionFileName.trim()}.md`;
+      onCreateWorkspaceFile(filename, md);
+      setShowSaveSessionDialog(false);
+    } else {
+      toast.error("No active workspace is open to save the session.");
+    }
+  };
+
   // Real LLM fetch client-side
   const queryLLM = async (userPrompt: string): Promise<string> => {
     if (!apiKey) {
       return getLocalMockResponse(userPrompt);
     }
+
+    let promptWithSkills = userPrompt;
+    if (attachedSkills.length > 0) {
+      const skillsContext = attachedSkills.map(skill => `--- Attached Skill File: ${skill.name} ---\n${skill.content}`).join("\n\n");
+      promptWithSkills = `${userPrompt}\n\n[Context from attached skill files]\n${skillsContext}`;
+    }
+
+    let workspaceOutline = "";
+    if (activeWorkspaceDir) {
+      try {
+        const treeRes = await fetch("/api/workspace/open", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dirPath: activeWorkspaceDir })
+        });
+        const treeData = await treeRes.json();
+        if (treeData.success && treeData.tree) {
+          const buildOutline = (nodes: any[], prefix = ""): string => {
+            let res = "";
+            for (const node of nodes) {
+              if (node.isDir) {
+                res += `${prefix}📁 ${node.name}/\n`;
+                if (node.children) {
+                  res += buildOutline(node.children, prefix + "  ");
+                }
+              } else {
+                res += `${prefix}📄 ${node.name}\n`;
+              }
+            }
+            return res;
+          };
+          
+          const treeArray = Array.isArray(treeData.tree) ? treeData.tree : [treeData.tree];
+          workspaceOutline = buildOutline(treeArray);
+        }
+      } catch (err) {
+        console.error("Error fetching workspace outline for agent:", err);
+      }
+    }
+
+    const workspaceContext = activeWorkspaceDir 
+      ? `\n\n[Active Project Workspace Context]
+Workspace Path: ${activeWorkspaceDir}
+Here is the current directory structure of the project:
+${workspaceOutline || "(Empty or unable to list files)"}
+
+CRITICAL USER GUIDELINES FOR WORKING ON THIS WORKSPACE:
+1. You are running directly inside the user's active project workspace (not scaffolding a new one from scratch).
+2. Read the directory structure above carefully. Work on, edit, and read these files to make changes.
+3. Do NOT scaffold a new project structure or directory unless the user explicitly requests you to change workspaces or create a new workspace.
+4. Instead, work within the existing files and directories. Edit files within it or add new components/files directly to it.
+5. If you write new code or make changes, specify the relative path to the file first, then output the file content, using the workspace automation code block format.
+6. If you modify an existing file, output the updated content of that file using the workspace automation code blocks (outputting the relative path followed by the complete file content).`
+      : "";
+
+    const PLAN_MODE_INSTRUCTIONS = `
+Plan Mode Instructions:
+You are in PLAN MODE. Do NOT generate the file contents or directory structures immediately.
+Instead, write a detailed structural project layout/spec. Detail the files and folders you plan to create, and explain your architectural design decisions.
+At the end of your response, ask the user for confirmation to generate the files.
+Only output files/directories using the workspace automation code block formats when the user explicitly gives you the green light to build after reviewing the plan.`;
+
+    const BUILD_MODE_INSTRUCTIONS = `
+Build Mode Instructions:
+You are in BUILD MODE. You can immediately start scaffolding files and folders.
+Make sure to output the files and folders using the workspace automation code block formats (e.g. \`\`\`directory and path code blocks) so they are built automatically in the workspace.`;
+
+    const activeWorkspaceInstructions = activePreset.name === "New Project"
+      ? (planMode ? PLAN_MODE_INSTRUCTIONS : `${WORKSPACE_AUTOMATION_INSTRUCTIONS}\n\n${BUILD_MODE_INSTRUCTIONS}`)
+      : WORKSPACE_AUTOMATION_INSTRUCTIONS;
 
     if (provider === "gemini") {
       // Clean and map model identifiers. If model does not contain "gemini", fall back
@@ -484,6 +1066,37 @@ echo "✅ Packaged $SKILL_NAME into $SKILL_NAME.tar.gz"
       
       // We pass the key in both X-goog-api-key header and query parameter for maximum compatibility with all AI Studio keys (including those starting with AQ.)
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+      
+      const parts: any[] = [{
+        text: `You are an expert AI persona: "${activePreset.name}" (${activePreset.role}).
+Your specialty: ${activePreset.desc}
+
+Context of active document in editor:
+\`\`\`markdown
+${activeContent || "(empty document)"}
+\`\`\`
+${workspaceContext}
+
+User Request:
+${promptWithSkills}
+
+Provide helpful instructions, templates, or code blocks. Format your response strictly in Markdown. If you output code templates, enclose them in markdown code blocks (\`\`\`markdown or \`\`\`python etc.) so the user can easily copy/insert them.
+
+${activeWorkspaceInstructions}`
+      }];
+
+      if (attachedImage) {
+        const match = attachedImage.match(/^data:(image\/[a-zA-Z0-9.-]+);base64,(.+)$/);
+        if (match) {
+          parts.push({
+            inlineData: {
+              mimeType: match[1],
+              data: match[2]
+            }
+          });
+        }
+      }
+
       const response = await fetch(url, {
         method: "POST",
         headers: { 
@@ -492,20 +1105,7 @@ echo "✅ Packaged $SKILL_NAME into $SKILL_NAME.tar.gz"
         },
         body: JSON.stringify({
           contents: [{
-            parts: [{
-              text: `You are an expert AI persona: "${activePreset.name}" (${activePreset.role}).
-Your specialty: ${activePreset.desc}
-
-Context of active document in editor:
-\`\`\`markdown
-${activeContent || "(empty document)"}
-\`\`\`
-
-User Request:
-${userPrompt}
-
-Provide helpful instructions, templates, or code blocks. Format your response strictly in Markdown. If you output code templates, enclose them in markdown code blocks (\`\`\`markdown or \`\`\`python etc.) so the user can easily copy/insert them.`
-            }]
+            parts
           }]
         })
       });
@@ -517,6 +1117,21 @@ Provide helpful instructions, templates, or code blocks. Format your response st
     } else {
       // OpenAI support
       const openaiModel = model.includes("gpt") ? model : "gpt-4o-mini";
+      
+      const contentArray: any[] = [{
+        type: "text",
+        text: `Active document content:\n${activeContent || "(empty)"}\n\nRequest:\n${promptWithSkills}`
+      }];
+
+      if (attachedImage) {
+        contentArray.push({
+          type: "image_url",
+          image_url: {
+            url: attachedImage
+          }
+        });
+      }
+
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -528,11 +1143,11 @@ Provide helpful instructions, templates, or code blocks. Format your response st
           messages: [
             {
               role: "system",
-              content: `You are ${activePreset.name} (${activePreset.role}). ${activePreset.desc}. Answer requests matching your expertise. Format outputs in Markdown.`
+              content: `You are ${activePreset.name} (${activePreset.role}). ${activePreset.desc}. Answer requests matching your expertise. Format outputs in Markdown.\n\n${workspaceContext}\n\n${activeWorkspaceInstructions}`
             },
             {
               role: "user",
-              content: `Active document content:\n${activeContent || "(empty)"}\n\nRequest:\n${userPrompt}`
+              content: contentArray
             }
           ]
         })
@@ -557,6 +1172,59 @@ Provide helpful instructions, templates, or code blocks. Format your response st
     try {
       const responseText = await queryLLM(textToSend);
       setMessages(prev => [...prev, { role: "assistant", content: responseText }]);
+      
+      // Clear attachments on success
+      setAttachedImage(null);
+      setAttachedSkills([]);
+
+      // Check if user requested creating files/folders/projects
+      const promptLower = textToSend.toLowerCase();
+      const isCreateRequest = 
+        promptLower.includes("create") || 
+        promptLower.includes("make") || 
+        promptLower.includes("new") || 
+        promptLower.includes("generate") || 
+        promptLower.includes("write") || 
+        promptLower.includes("setup") || 
+        promptLower.includes("add") || 
+        promptLower.includes("save") || 
+        promptLower.includes("scaffold");
+
+      if (isCreateRequest) {
+        const blocks = parseMessageCodeBlocks(responseText);
+        let createdCount = 0;
+
+        for (const block of blocks) {
+          if (block.language === "directory" || block.isDirectory) {
+            const folderPath = block.content.trim();
+            if (folderPath) {
+              if (onCreateWorkspaceFolder) {
+                onCreateWorkspaceFolder(folderPath);
+                createdCount++;
+              } else {
+                // Fallback direct endpoint call if prop is not passed
+                try {
+                  await fetch("/api/workspace/file/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      parentPath: activeWorkspaceDir || "",
+                      name: folderPath,
+                      isDir: true
+                    })
+                  });
+                  createdCount++;
+                } catch (e) {
+                  console.error("Direct folder create failed:", e);
+                }
+              }
+            }
+          } else if (block.associatedFilename && onCreateWorkspaceFile) {
+            onCreateWorkspaceFile(block.associatedFilename, block.content);
+            createdCount++;
+          }
+        }
+      }
     } catch (err: any) {
       toast.error("AI service error: " + err.message);
       setMessages(prev => [...prev, { 
@@ -579,14 +1247,27 @@ Provide helpful instructions, templates, or code blocks. Format your response st
           <span className="text-xs font-bold text-foreground">AI Skill Assistant</span>
         </div>
         
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => setShowSettings(!showSettings)}
-          className={`h-7 w-7 text-muted-foreground hover:text-foreground ${showSettings ? "bg-muted" : ""}`}
-        >
-          <Settings className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleSaveSessionClick}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            title="Save Chat Session as Markdown"
+          >
+            <Save className="h-3.5 w-3.5" />
+          </Button>
+          
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setShowSettings(!showSettings)}
+            className={`h-7 w-7 text-muted-foreground hover:text-foreground ${showSettings ? "bg-muted" : ""}`}
+            title="AI Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Settings Drawer */}
@@ -736,10 +1417,31 @@ Provide helpful instructions, templates, or code blocks. Format your response st
             className={`flex-1 py-1 px-1.5 rounded text-[10px] font-semibold flex items-center justify-center gap-1 transition-all border ${activePreset.name === p.name ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold" : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"}`}
           >
             <span>{p.avatar}</span>
-            <span>{p.name.split(" ")[0]}</span>
+            <span>{p.name === "New Project" ? "Project" : p.name.split(" ")[0]}</span>
           </button>
         ))}
       </div>
+
+      {activePreset.name === "New Project" && (
+        <div className="px-3 py-2 border-b border-sidebar-border bg-amber-500/5 flex items-center justify-between text-xs select-none">
+          <div className="flex flex-col gap-0.5">
+            <span className="font-semibold text-foreground flex items-center gap-1">
+              <span className="h-1.5 w-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+              Plan Mode Active
+            </span>
+            <span className="text-[10px] text-muted-foreground leading-none">Agent drafts files layout and plans before writing.</span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            type="button"
+            onClick={() => setPlanMode(!planMode)}
+            className={`h-7 px-2.5 text-[10px] font-bold border-border transition-all ${planMode ? "bg-amber-500 hover:bg-amber-600 text-black border-transparent shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {planMode ? "Plan Mode" : "Build Mode"}
+          </Button>
+        </div>
+      )}
 
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background/20">
@@ -764,7 +1466,57 @@ Provide helpful instructions, templates, or code blocks. Format your response st
                     const codeText = String(children).replace(/\n$/, "");
                     const matchingBlock = blocks.find(b => b.content.replace(/\r?\n/g, "\n") === codeText.replace(/\r?\n/g, "\n"));
                     const associatedFilename = matchingBlock?.associatedFilename;
+                    const isDirectory = matchingBlock?.language === "directory" || matchingBlock?.isDirectory;
                     
+                    if (isDirectory) {
+                      return (
+                        <div className="relative group my-2 rounded border border-border bg-slate-950 text-slate-100 overflow-hidden font-mono text-[11px] leading-relaxed">
+                          <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-border/40 select-none">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                              Directory: {codeText}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                onClick={() => {
+                                  if (onCreateWorkspaceFolder) {
+                                    onCreateWorkspaceFolder(codeText);
+                                  } else {
+                                    // Fallback direct call
+                                    fetch("/api/workspace/file/create", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        parentPath: activeWorkspaceDir || "",
+                                        name: codeText,
+                                        isDir: true
+                                      })
+                                    })
+                                    .then(res => res.json())
+                                    .then(data => {
+                                      if (data.success) {
+                                        toast.success(`Created folder ${codeText}`);
+                                      } else {
+                                        toast.error("Failed to create folder: " + data.error);
+                                      }
+                                    })
+                                    .catch(e => toast.error("Error creating folder: " + e.message));
+                                  }
+                                }}
+                                className="h-5 py-0 px-1 text-[10px] text-amber-500 hover:text-amber-400 hover:bg-slate-800 font-semibold flex items-center gap-0.5"
+                              >
+                                <Plus className="h-3 w-3" /> Create Folder
+                              </Button>
+                            </div>
+                          </div>
+                          <pre className="p-3 overflow-x-auto">
+                            <code>{children}</code>
+                          </pre>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className="relative group my-2 rounded border border-border bg-slate-950 text-slate-100 overflow-hidden font-mono text-[11px] leading-relaxed">
                         <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-border/40 select-none">
@@ -863,9 +1615,10 @@ Provide helpful instructions, templates, or code blocks. Format your response st
         <div className="px-4 py-2 border-t border-sidebar-border bg-background/20 select-none">
           <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Suggested Prompts</div>
           <div className="flex flex-col gap-1.5">
-            {activePreset.options.map((opt, idx) => (
+            {suggestedPrompts.map((opt, idx) => (
               <button
                 key={idx}
+                type="button"
                 onClick={() => handleSend(opt.prompt)}
                 className="w-full text-left text-[11px] p-2 rounded bg-background/60 hover:bg-muted border border-border/30 hover:border-amber-500/30 text-foreground/80 hover:text-foreground truncate transition-all duration-150 flex items-center justify-between group"
               >
@@ -879,32 +1632,162 @@ Provide helpful instructions, templates, or code blocks. Format your response st
 
       {/* Input Form */}
       <div className="p-3 border-t border-sidebar-border bg-background/50">
+        {/* Render Attachments Row (Images and Skills) */}
+        {(attachedImage || attachedSkills.length > 0) && (
+          <div className="flex flex-wrap gap-2 mb-2 p-1.5 bg-background/20 rounded border border-border/40 max-h-24 overflow-y-auto">
+            {attachedImage && (
+              <div className="relative h-11 w-11 rounded overflow-hidden border border-border group shrink-0 select-none">
+                <img src={attachedImage} className="h-full w-full object-cover" />
+                <button 
+                  type="button"
+                  onClick={() => setAttachedImage(null)}
+                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                >
+                  <Trash2 className="h-3 w-3 text-red-500" />
+                </button>
+              </div>
+            )}
+            
+            {attachedSkills.map((skill) => (
+              <Badge 
+                key={skill.path}
+                variant="secondary"
+                className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] bg-muted/80 text-foreground border border-border shrink-0 select-none"
+              >
+                <Paperclip className="h-2.5 w-2.5 text-amber-500" />
+                <span className="truncate max-w-[100px]" title={skill.name}>{skill.name}</span>
+                <button 
+                  type="button"
+                  onClick={() => setAttachedSkills(prev => prev.filter(s => s.path !== skill.path))}
+                  className="text-muted-foreground hover:text-foreground hover:bg-muted ml-0.5 rounded-full p-0.5 transition-colors"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+
         <form 
           onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-          className="flex items-end gap-2"
+          className="flex flex-col gap-2"
         >
-          <Textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={`Message ${activePreset.name}...`}
-            className="min-h-[40px] max-h-24 text-xs py-2 px-3 resize-none bg-background border-border"
-          />
-          <Button 
-            type="submit" 
-            size="icon" 
-            disabled={loading || !input.trim()}
-            className="h-8 w-8 shrink-0 bg-amber-500 hover:bg-amber-600 text-black disabled:opacity-50"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2 items-end">
+            {/* Hidden Input for Images */}
+            <input
+              type="file"
+              id="chat-image-upload"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageUpload}
+            />
+
+            <div className="flex flex-col gap-1 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => document.getElementById("chat-image-upload")?.click()}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground border-border hover:bg-muted"
+                title="Attach Image (Gemini/OpenAI Multimodal)"
+              >
+                <Image className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setShowAttachDialog(true)}
+                className="h-8 w-8 text-muted-foreground hover:text-foreground border-border hover:bg-muted"
+                title="Attach Skill File or Workspace File"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <Textarea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={`Message ${activePreset.name}...`}
+              className="min-h-[40px] max-h-24 text-xs py-2 px-3 resize-none bg-background border-border flex-1"
+            />
+            <Button 
+              type="submit" 
+              size="icon" 
+              disabled={loading || (!input.trim() && !attachedImage)}
+              className="h-8 w-8 shrink-0 bg-amber-500 hover:bg-amber-600 text-black disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
         </form>
       </div>
+
+      {/* Attach Skill / File Dialog */}
+      <AttachSkillDialog
+        open={showAttachDialog}
+        onClose={() => setShowAttachDialog(false)}
+        onAttach={(skill) => {
+          if (attachedSkills.some(s => s.path === skill.path)) {
+            toast.error("File is already attached");
+            return;
+          }
+          setAttachedSkills(prev => [...prev, skill]);
+        }}
+        activeWorkspaceDir={activeWorkspaceDir}
+        activeWorkspaceOpen={activeWorkspaceOpen}
+      />
+
+      {/* Save Session Dialog */}
+      <Dialog open={showSaveSessionDialog} onOpenChange={(o: boolean) => !o && setShowSaveSessionDialog(false)}>
+        <DialogContent className="max-w-md bg-background border border-border p-5 rounded-lg shadow-xl">
+          <DialogHeader className="mb-4">
+            <div className="flex items-center gap-2 text-foreground font-bold">
+              <Save className="h-4.5 w-4.5 text-amber-500" />
+              <DialogTitle className="text-sm font-bold text-foreground">Save Chat Session</DialogTitle>
+            </div>
+          </DialogHeader>
+          
+          <div className="space-y-4 text-xs">
+            <div className="space-y-1.5">
+              <label className="font-bold text-muted-foreground">Session Filename</label>
+              <div className="flex gap-1.5 items-center">
+                <Input
+                  value={sessionFileName}
+                  onChange={e => setSessionFileName(e.target.value)}
+                  placeholder="session_name"
+                  className="h-9 text-xs focus-visible:ring-amber-500/35"
+                />
+                <span className="font-mono text-muted-foreground font-semibold">.md</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/80 mt-1 leading-normal">
+                This session will be saved as a markdown file inside the <span className="font-mono bg-muted/60 px-1 rounded">sessions/</span> folder in your workspace.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-5">
+            <Button size="sm" type="button" variant="ghost" onClick={() => setShowSaveSessionDialog(false)} className="text-xs h-8">
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              disabled={!sessionFileName.trim()}
+              onClick={handleSaveSessionSubmit}
+              className="text-xs h-8 bg-amber-500 hover:bg-amber-600 text-black font-semibold min-w-[90px]"
+            >
+              Save Session
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -361,7 +361,7 @@ async function startServer() {
         try {
           const subItems = await fs.readdir(dirPath, { withFileTypes: true });
           for (const sub of subItems) {
-            if (sub.isDirectory() && !sub.name.startsWith(".")) {
+            if (sub.isDirectory() && (!sub.name.startsWith(".") || sub.name === ".agents")) {
               const fullSubPath = path.join(dirPath, sub.name);
               const hasSkillMd = fsSync.existsSync(path.join(fullSubPath, "SKILL.md")) || 
                                  fsSync.existsSync(path.join(fullSubPath, "skill.md"));
@@ -633,6 +633,141 @@ ${content || `## Purpose\nThis skill helps with ${name.toLowerCase()}.\n`}
     }
   });
 
+  // Copy directory helper
+  async function copyDir(src: string, dest: string) {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        await copyDir(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
+  // Initialize a new temporary workspace
+  app.post("/api/workspace/temporary", async (req, res) => {
+    try {
+      const tempDirName = `temp_workspace_${Date.now()}`;
+      const tempPath = path.join(os.tmpdir(), tempDirName).replace(/\\/g, "/");
+      await fs.mkdir(tempPath, { recursive: true });
+      
+      const defaultFilePath = path.join(tempPath, "README.md").replace(/\\/g, "/");
+      await fs.writeFile(defaultFilePath, "# Welcome to your Temporary Workspace\n\nDescribe your project and build it with AI!", "utf-8");
+      
+      res.json({ 
+        success: true, 
+        workspacePath: tempPath,
+        filePath: defaultFilePath
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Save temporary workspace to Library Workspaces
+  app.post("/api/workspace/save-temporary", async (req, res) => {
+    try {
+      const { tempPath, workspaceName, newFileName, activeFileContent, scaffoldingRef } = req.body;
+      if (!tempPath || !workspaceName || !newFileName) {
+        return res.status(400).json({ success: false, error: "Missing required parameters: tempPath, workspaceName, newFileName" });
+      }
+
+      // Sanitize workspace folder name
+      const sanitizedWorkspaceName = workspaceName.trim()
+        .replace(/[^a-zA-Z0-9-_]/g, "_")
+        .replace(/_+/g, "_")
+        .toLowerCase();
+
+      // Sanitize new filename
+      let sanitizedFileName = newFileName.trim()
+        .replace(/[^a-zA-Z0-9-_.]/g, "_")
+        .replace(/_+/g, "_");
+      if (!sanitizedFileName) {
+        sanitizedFileName = "README.md";
+      }
+      if (!path.extname(sanitizedFileName)) {
+        sanitizedFileName += ".md";
+      }
+
+      // Library Workspaces path
+      const libraryPath = getLibraryPath();
+      const workspacesDir = path.join(libraryPath, "Workspaces").replace(/\\/g, "/");
+      const targetWorkspacePath = path.join(workspacesDir, sanitizedWorkspaceName).replace(/\\/g, "/");
+
+      if (fsSync.existsSync(targetWorkspacePath)) {
+        return res.status(400).json({ success: false, error: "A workspace with this name already exists in your Library." });
+      }
+
+      // Create target directory
+      await fs.mkdir(targetWorkspacePath, { recursive: true });
+
+      // Copy all existing files in temp path
+      if (fsSync.existsSync(tempPath)) {
+        await copyDir(tempPath, targetWorkspacePath);
+      }
+
+      // Delete default README.md in destination if it was renamed
+      if (sanitizedFileName !== "README.md") {
+        const oldDefaultDest = path.join(targetWorkspacePath, "README.md").replace(/\\/g, "/");
+        if (fsSync.existsSync(oldDefaultDest)) {
+          await fs.unlink(oldDefaultDest);
+        }
+      }
+
+      // Write active file content to the destination path
+      const newFileDestPath = path.join(targetWorkspacePath, sanitizedFileName).replace(/\\/g, "/");
+      await fs.writeFile(newFileDestPath, activeFileContent || "", "utf-8");
+
+      // Generate list of files and folders in dest
+      const listFolderContents = async (dir: string): Promise<string[]> => {
+        const results: string[] = [];
+        const items = await fs.readdir(dir, { withFileTypes: true });
+        for (const item of items) {
+          if (item.name === `${sanitizedWorkspaceName}.aws`) continue;
+          if (item.isDirectory()) {
+            results.push(`[Folder] ${item.name}/`);
+            const sub = await listFolderContents(path.join(dir, item.name));
+            results.push(...sub.map(s => `  ${s}`));
+          } else {
+            results.push(`[File] ${item.name}`);
+          }
+        }
+        return results;
+      };
+
+      const folderStructure = await listFolderContents(targetWorkspacePath);
+
+      // Create the .AWS file
+      const awsData = {
+        name: workspaceName,
+        folderName: sanitizedWorkspaceName,
+        created: new Date().toISOString(),
+        originalTempPath: tempPath,
+        location: targetWorkspacePath,
+        primaryFile: sanitizedFileName,
+        scaffoldingRef: scaffoldingRef || "Scaffolded Workspace",
+        structure: folderStructure
+      };
+
+      const awsFilePath = path.join(targetWorkspacePath, `${sanitizedWorkspaceName}.aws`).replace(/\\/g, "/");
+      await fs.writeFile(awsFilePath, JSON.stringify(awsData, null, 2), "utf-8");
+
+      res.json({
+        success: true,
+        workspacePath: targetWorkspacePath,
+        filePath: newFileDestPath,
+        sanitizedWorkspaceName,
+        sanitizedFileName
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // Create file or directory
   app.post("/api/workspace/file/create", async (req, res) => {
     try {
@@ -886,7 +1021,24 @@ ${content || `## Purpose\nThis skill helps with ${name.toLowerCase()}.\n`}
       content = content.replace(match[0], `---\n${newFrontmatter}\n---\n`);
       await fs.writeFile(filePath, content, "utf-8");
       
-      res.json({ success: true, oldVersion: currentVersion, newVersion });
+      // Also update extension.json if it exists in the same folder
+      let updatedExtensionJson = false;
+      const dirPath = path.dirname(filePath);
+      const extJsonPath = path.join(dirPath, "extension.json");
+      try {
+        const stats = await fs.stat(extJsonPath);
+        if (stats.isFile()) {
+          const extContent = await fs.readFile(extJsonPath, "utf-8");
+          const extJson = JSON.parse(extContent);
+          extJson.version = newVersion;
+          await fs.writeFile(extJsonPath, JSON.stringify(extJson, null, 2), "utf-8");
+          updatedExtensionJson = true;
+        }
+      } catch (e) {
+        // extension.json doesn't exist or is invalid JSON; ignore and proceed
+      }
+      
+      res.json({ success: true, oldVersion: currentVersion, newVersion, updatedExtensionJson });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

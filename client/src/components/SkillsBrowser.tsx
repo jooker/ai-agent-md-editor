@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Search, Star, Download, CheckCircle2, FolderOpen, 
   ExternalLink, Compass, Library, Info, BookOpen, AlertCircle,
-  FileText, X, Maximize2, Minimize2
+  FileText, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,6 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [previewSkill, setPreviewSkill] = useState<RegistrySkill | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string>("SKILL.md");
-  const [isExpanded, setIsExpanded] = useState(false);
 
   // Fetch installed skills from the server to check installation status
   const fetchInstalledSkills = async () => {
@@ -407,8 +406,8 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
       </div>
 
       {/* Live Package Explorer Preview Modal */}
-      <Dialog open={!!previewSkill || loadingPreview} onOpenChange={() => { if (!loadingPreview) { setPreviewSkill(null); setIsExpanded(false); } }}>
-        <DialogContent className={`bg-card border border-border text-foreground flex flex-col p-0 overflow-hidden shadow-xl rounded-xl transition-all duration-300 ${isExpanded ? "w-[8.5in] max-w-[8.5in] h-[75vh] max-h-[75vh]" : "max-w-4xl max-h-[85vh] h-[85vh]"}`}>
+      <Dialog open={!!previewSkill || loadingPreview} onOpenChange={() => { if (!loadingPreview) { setPreviewSkill(null); } }}>
+        <DialogContent className="w-[calc(100vw-200px)] max-w-fit h-[calc(100vh-200px)] max-h-none bg-card text-foreground flex flex-col p-0 overflow-hidden shadow-xl rounded-xl border border-border">
           <DialogTitle className="sr-only">Skill Preview</DialogTitle>
           <DialogDescription className="sr-only">Detailed preview of raw skill markdown files.</DialogDescription>
           {loadingPreview && (
@@ -435,18 +434,8 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
                   <Button 
                     variant="ghost" 
                     size="icon" 
-                    onClick={() => setIsExpanded(!isExpanded)}
-                    title={isExpanded ? "Restore Dialog Size" : "Expand to 8.5\" x 75vh"}
-                    className="text-muted-foreground hover:text-foreground h-7 w-7"
-                  >
-                    {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
                     onClick={() => {
                       setPreviewSkill(null);
-                      setIsExpanded(false);
                     }}
                     className="text-muted-foreground hover:text-foreground h-7 w-7"
                   >
@@ -458,7 +447,7 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
               {/* Explorer Layout */}
               <div className="flex-grow overflow-hidden flex min-h-0">
                 {/* Left Explorer Panel */}
-                <div className="w-64 border-r border-border bg-sidebar/10 overflow-y-auto p-3 flex flex-col justify-between shrink-0">
+                <div className="w-[15%] min-w-[15%] max-w-[15%] border-r border-border bg-sidebar/10 overflow-y-auto p-3 flex flex-col justify-between shrink-0">
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground mb-2">Package Files</h4>
@@ -504,7 +493,7 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
                 </div>
 
                 {/* Right Code Viewer / Markdown HTML Preview */}
-                <div className="flex-grow overflow-y-auto p-5 bg-background font-sans text-xs leading-relaxed text-foreground border-l border-border min-h-0">
+                <div className="w-[85%] min-w-[85%] max-w-[85%] overflow-y-auto p-5 bg-background font-sans text-xs leading-relaxed text-foreground border-l border-border min-h-0">
                   {(() => {
                     const activeFile = previewSkill.files?.find(f => f.path === selectedFilePath);
                     const contents = activeFile?.contents || "";
@@ -538,7 +527,6 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
                   variant="ghost" 
                   onClick={() => {
                     setPreviewSkill(null);
-                    setIsExpanded(false);
                   }} 
                   className="text-xs h-8"
                 >
@@ -552,7 +540,6 @@ export function SkillsBrowser({ activeWorkspaceDir, onOpenWorkspace }: SkillsBro
                     onClick={() => {
                       handleInstall(previewSkill);
                       setPreviewSkill(null);
-                      setIsExpanded(false);
                     }}
                     className="text-xs h-8 bg-amber-500 hover:bg-amber-600 text-black font-semibold shadow-md shadow-amber-500/10 min-w-[100px]"
                   >

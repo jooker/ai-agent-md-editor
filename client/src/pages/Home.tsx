@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogHeader } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { TEMPLATES, Template } from "@/lib/templates";
@@ -32,6 +32,7 @@ import { lintMarkdown, Diagnostic } from "@/lib/mdLinter";
 import { SkillsBrowser } from "@/components/SkillsBrowser";
 import { ExtensionsManager, Extension } from "@/components/ExtensionsManager";
 import { SnippetMenu, SnippetItem } from "@/components/SnippetMenu";
+import { checkSpelling } from "@/lib/spellChecker";
 
 interface Tab {
   id: string;
@@ -274,6 +275,16 @@ export default function Home() {
   });
   const [activeWorkspaceFilePath, setActiveWorkspaceFilePath] = useState<string>("");
   const [refreshWorkspaceTrigger, setRefreshWorkspaceTrigger] = useState(0);
+  
+  // Temporary Workspace States
+  const [isTemporaryWorkspace, setIsTemporaryWorkspace] = useState(() => {
+    return localStorage.getItem("agent_forge_is_temp_workspace") === "true";
+  });
+  const [showSaveWorkspaceDialog, setShowSaveWorkspaceDialog] = useState(false);
+  const [tempWorkspaceName, setTempWorkspaceName] = useState("");
+  const [tempWorkspaceFileName, setTempWorkspaceFileName] = useState("main.md");
+  const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
+
   const [showLibrary, setShowLibrary] = useState(false);
   const [showSkillWizard, setShowSkillWizard] = useState(false);
   const [workspaceOpenDialog, setWorkspaceOpenDialog] = useState(false);
@@ -332,6 +343,11 @@ export default function Home() {
   const [snippetMenuOpen, setSnippetMenuOpen] = useState(false);
   const [snippetMenuPos, setSnippetMenuPos] = useState({ x: 0, y: 0 });
   const [snippetSearchQuery, setSnippetSearchQuery] = useState("");
+
+  // Spellchecker states
+  const [misspelledWord, setMisspelledWord] = useState<string>("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [misspelledRange, setMisspelledRange] = useState<{ start: number; end: number } | null>(null);
 
   // Tabstop Session for Snippet navigation
   interface TabStop {
@@ -487,7 +503,126 @@ export default function Home() {
     e.preventDefault();
     setSnippetMenuPos({ x: e.clientX, y: e.clientY });
     setSnippetSearchQuery("");
+    
+    // Spellcheck detection
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const pos = textarea.selectionStart;
+      const text = textarea.value;
+      
+      // Find the word boundaries under the cursor
+      let start = pos;
+      while (start > 0 && /\w/.test(text[start - 1])) {
+        start--;
+      }
+      let end = pos;
+      while (end < text.length && /\w/.test(text[end])) {
+        end++;
+      }
+      
+      const word = text.slice(start, end);
+      if (word && word.length > 2) {
+        const result = checkSpelling(word);
+        if (result.misspelled) {
+          setMisspelledWord(word);
+          setSuggestions(result.suggestions);
+          setMisspelledRange({ start, end });
+        } else {
+          setMisspelledWord("");
+          setSuggestions([]);
+          setMisspelledRange(null);
+        }
+      } else {
+        setMisspelledWord("");
+        setSuggestions([]);
+        setMisspelledRange(null);
+      }
+    }
+    
     setSnippetMenuOpen(true);
+  };
+
+  const handleSelectSuggestion = (suggestion: string) => {
+    const textarea = textareaRef.current;
+    if (textarea && misspelledRange) {
+      const { start, end } = misspelledRange;
+      const val = textarea.value;
+      const newVal = val.substring(0, start) + suggestion + val.substring(end);
+      handleContentChange(newVal);
+      pushToHistoryStack(activeTabId, newVal);
+      
+      const newPos = start + suggestion.length;
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(newPos, newPos);
+      }, 0);
+    }
+    setSnippetMenuOpen(false);
+  };
+
+  const handleCut = async () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = textarea.value.substring(start, end);
+      if (selectedText) {
+        try {
+          await navigator.clipboard.writeText(selectedText);
+          const newVal = textarea.value.substring(0, start) + textarea.value.substring(end);
+          handleContentChange(newVal);
+          pushToHistoryStack(activeTabId, newVal);
+          
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(start, start);
+          }, 0);
+          toast.success("Cut text successfully");
+        } catch (err) {
+          toast.error("Clipboard permission denied");
+        }
+      }
+    }
+  };
+
+  const handleCopy = async () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = textarea.value.substring(start, end);
+      if (selectedText) {
+        try {
+          await navigator.clipboard.writeText(selectedText);
+          toast.success("Copied text successfully");
+        } catch (err) {
+          toast.error("Clipboard permission denied");
+        }
+      }
+    }
+  };
+
+  const handlePaste = async () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      try {
+        const text = await navigator.clipboard.readText();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const newVal = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+        handleContentChange(newVal);
+        pushToHistoryStack(activeTabId, newVal);
+        
+        const newPos = start + text.length;
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(newPos, newPos);
+        }, 0);
+        toast.success("Pasted successfully");
+      } catch (err) {
+        toast.error("Clipboard paste permission denied");
+      }
+    }
   };
 
   const handleEditorSelect = () => {
@@ -520,7 +655,8 @@ export default function Home() {
   // Update localStorage when workspace changes
   useEffect(() => {
     localStorage.setItem("agent_forge_workspace_dir", activeWorkspaceDir);
-  }, [activeWorkspaceDir]);
+    localStorage.setItem("agent_forge_is_temp_workspace", isTemporaryWorkspace ? "true" : "false");
+  }, [activeWorkspaceDir, isTemporaryWorkspace]);
 
   // Lint active tab content when tab or content changes
   useEffect(() => {
@@ -582,7 +718,78 @@ export default function Home() {
   const handleCloseWorkspace = () => {
     setActiveWorkspaceDir("");
     setActiveWorkspaceFilePath("");
+    setIsTemporaryWorkspace(false);
+    localStorage.removeItem("agent_forge_workspace_dir");
+    localStorage.removeItem("agent_forge_is_temp_workspace");
     toast.info("Workspace closed.");
+  };
+
+  const handleInitializeTempWorkspace = async () => {
+    try {
+      const res = await fetch("/api/workspace/temporary", {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveWorkspaceDir(data.workspacePath);
+        setIsTemporaryWorkspace(true);
+        handleOpenFileFromWorkspace(data.filePath);
+        toast.success("Initialized temporary workspace!");
+      } else {
+        toast.error("Failed to initialize temporary workspace: " + data.error);
+      }
+    } catch (err: any) {
+      toast.error("Error creating temporary workspace: " + err.message);
+    }
+  };
+
+  const handleSaveTemporaryWorkspace = async () => {
+    if (!tempWorkspaceName.trim()) {
+      toast.error("Please enter a workspace name");
+      return;
+    }
+    if (!tempWorkspaceFileName.trim()) {
+      toast.error("Please enter a filename for the primary file");
+      return;
+    }
+
+    setIsSavingWorkspace(true);
+    try {
+      const activeTab = tabs.find(t => t.id === activeTabId);
+      const activeFileContent = activeTab ? activeTab.content : "";
+
+      const res = await fetch("/api/workspace/save-temporary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tempPath: activeWorkspaceDir,
+          workspaceName: tempWorkspaceName,
+          newFileName: tempWorkspaceFileName,
+          activeFileContent,
+          scaffoldingRef: "Scaffolded Workspace"
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActiveWorkspaceDir(data.workspacePath);
+        setIsTemporaryWorkspace(false);
+        setShowSaveWorkspaceDialog(false);
+        handleOpenFileFromWorkspace(data.filePath);
+        
+        if (activeTab && activeTab.title === "README.md") {
+          setTabs(prev => prev.filter(t => t.id !== activeTabId));
+        }
+
+        setRefreshWorkspaceTrigger(prev => prev + 1);
+        toast.success(`Workspace "${tempWorkspaceName}" successfully saved to Library/Workspaces!`);
+      } else {
+        toast.error("Failed to save workspace: " + data.error);
+      }
+    } catch (err: any) {
+      toast.error("Error saving workspace: " + err.message);
+    } finally {
+      setIsSavingWorkspace(false);
+    }
   };
 
   const buildWorkspacePackage = async () => {
@@ -730,8 +937,15 @@ export default function Home() {
         </p>
         <div className="w-full space-y-2">
           <Button 
+            onClick={handleInitializeTempWorkspace}
+            className="w-full text-xs h-8 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-bold shadow-md shadow-amber-500/10"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> New Workspace (Temporary)
+          </Button>
+          <Button 
             onClick={() => setWorkspaceOpenDialog(true)}
-            className="w-full text-xs h-8 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold shadow-md shadow-amber-500/10"
+            variant="outline"
+            className="w-full text-xs h-8 border-border hover:bg-muted text-foreground"
           >
             Open Project/Workspace
           </Button>
@@ -1052,6 +1266,31 @@ export default function Home() {
     }
   };
 
+  const handleCreateWorkspaceFolder = async (folderName: string) => {
+    if (activeWorkspaceDir) {
+      try {
+        const res = await fetch("/api/workspace/file/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parentPath: activeWorkspaceDir,
+            name: folderName,
+            isDir: true
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          toast.success(`Created folder ${folderName}`);
+          setRefreshWorkspaceTrigger(prev => prev + 1);
+        } else {
+          toast.error("Failed to create folder: " + data.error);
+        }
+      } catch (err: any) {
+        toast.error("Error creating folder: " + err.message);
+      }
+    }
+  };
+
   const handleCustomSaveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customSavePath.trim()) return;
@@ -1303,7 +1542,7 @@ export default function Home() {
   };
 
   // Copy to clipboard
-  const handleCopy = () => {
+  const handleCopyAll = () => {
     navigator.clipboard.writeText(activeContent);
     toast.success("Copied to clipboard!");
   };
@@ -1735,6 +1974,43 @@ export default function Home() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
+                                  onClick={handleInitializeTempWorkspace}
+                                  className="h-6 w-6 text-muted-foreground hover:text-amber-500"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="text-[10px] bg-card border border-border text-foreground">
+                                Initialize Temporary Workspace
+                              </TooltipContent>
+                            </Tooltip>
+
+                            {isTemporaryWorkspace && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setTempWorkspaceName("");
+                                      setTempWorkspaceFileName("main.md");
+                                      setShowSaveWorkspaceDialog(true);
+                                    }}
+                                    className="h-6 w-6 text-amber-500 hover:text-amber-600 animate-pulse"
+                                  >
+                                    <Save className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="text-[10px] bg-card border border-border text-foreground">
+                                  Save Temporary Workspace
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   onClick={() => setWorkspaceOpenDialog(true)}
                                   className="h-6 w-6 text-muted-foreground hover:text-foreground"
                                 >
@@ -1819,7 +2095,9 @@ export default function Home() {
                         activeContent={activeContent}
                         onInsertContent={handleInsertFromChat}
                         onCreateWorkspaceFile={handleCreateWorkspaceFile}
+                        onCreateWorkspaceFolder={handleCreateWorkspaceFolder}
                         activeWorkspaceOpen={!!activeWorkspaceDir}
+                        activeWorkspaceDir={activeWorkspaceDir}
                       />
                     )}
 
@@ -2055,7 +2333,7 @@ export default function Home() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={handleCopy}
+                onClick={handleCopyAll}
                 className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
                 title="Copy all"
               >
@@ -2458,6 +2736,12 @@ export default function Home() {
           initialSearch={snippetSearchQuery}
           onClose={() => setSnippetMenuOpen(false)}
           onSelect={handleSelectSnippet}
+          misspelledWord={misspelledWord}
+          suggestions={suggestions}
+          onSelectSuggestion={handleSelectSuggestion}
+          onCut={handleCut}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
         />
 
         {/* SKILL IMPORT OVERWRITE CONFIRMATION DIALOG */}
@@ -2498,6 +2782,66 @@ export default function Home() {
                   Overwrite & Import
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* SAVE WORKSPACE DIALOG */}
+        <Dialog open={showSaveWorkspaceDialog} onOpenChange={(o: boolean) => !o && setShowSaveWorkspaceDialog(false)}>
+          <DialogContent className="max-w-md bg-background border border-border p-5 rounded-lg shadow-xl text-xs">
+            <DialogHeader className="mb-4">
+              <div className="flex items-center gap-2 text-foreground font-bold">
+                <Save className="h-4.5 w-4.5 text-amber-500" />
+                <DialogTitle className="text-sm font-bold text-foreground">Save Workspace / Project</DialogTitle>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="font-semibold text-muted-foreground">Workspace Name</label>
+                <Input
+                  value={tempWorkspaceName}
+                  onChange={e => setTempWorkspaceName(e.target.value)}
+                  placeholder="e.g. My SaaS App"
+                  className="h-9 text-xs focus-visible:ring-amber-500/35"
+                />
+                <p className="text-[10px] text-muted-foreground/80 leading-normal">
+                  This will create a new sanitized folder inside your <span className="font-mono bg-muted/60 px-1 rounded">Library/Workspaces/</span> directory.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-muted-foreground">Rename Open File (Scaffolding File)</label>
+                <Input
+                  value={tempWorkspaceFileName}
+                  onChange={e => setTempWorkspaceFileName(e.target.value)}
+                  placeholder="e.g. main.md or app.js"
+                  className="h-9 text-xs focus-visible:ring-amber-500/35"
+                />
+                <p className="text-[10px] text-muted-foreground/80 leading-normal">
+                  Rename the current temporary file to a sanitized filename. Illegal characters will be replaced automatically.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6 select-none">
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                onClick={() => setShowSaveWorkspaceDialog(false)} 
+                className="text-xs h-8"
+                disabled={isSavingWorkspace}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={isSavingWorkspace || !tempWorkspaceName.trim() || !tempWorkspaceFileName.trim()}
+                onClick={handleSaveTemporaryWorkspace}
+                className="text-xs h-8 bg-amber-500 hover:bg-amber-600 text-black font-semibold min-w-[100px]"
+              >
+                {isSavingWorkspace ? "Saving..." : "Save Workspace"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

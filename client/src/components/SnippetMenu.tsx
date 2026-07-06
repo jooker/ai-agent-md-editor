@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
-import { Search, Code, FileText, ChevronRight } from "lucide-react";
+import { Search, Code, FileText, ChevronRight, Copy, Scissors, Clipboard, CheckCircle2 } from "lucide-react";
 import { TEMPLATES } from "@/lib/templates";
 
 export interface SnippetItem {
@@ -100,9 +100,28 @@ interface SnippetMenuProps {
   onClose: () => void;
   onSelect: (snippet: SnippetItem) => void;
   initialSearch?: string;
+  misspelledWord?: string;
+  suggestions?: string[];
+  onSelectSuggestion?: (suggestion: string) => void;
+  onCut?: () => void;
+  onCopy?: () => void;
+  onPaste?: () => void;
 }
 
-export function SnippetMenu({ x, y, open, onClose, onSelect, initialSearch = "" }: SnippetMenuProps) {
+export function SnippetMenu({
+  x,
+  y,
+  open,
+  onClose,
+  onSelect,
+  initialSearch = "",
+  misspelledWord,
+  suggestions,
+  onSelectSuggestion,
+  onCut,
+  onCopy,
+  onPaste
+}: SnippetMenuProps) {
   const [search, setSearch] = useState(initialSearch);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -202,6 +221,53 @@ export function SnippetMenu({ x, y, open, onClose, onSelect, initialSearch = "" 
       className="w-[360px] max-h-[320px] bg-background/95 border border-border/80 rounded-xl shadow-2xl backdrop-blur-md flex flex-col overflow-hidden text-foreground animate-in fade-in zoom-in-95 duration-100"
       onKeyDown={handleKeyDown}
     >
+      {/* Suggestions Section */}
+      {suggestions && suggestions.length > 0 && (
+        <div className="border-b border-border/50 bg-amber-500/5 px-1 py-1.5 shrink-0 select-none">
+          <div className="text-[9px] uppercase tracking-wider font-bold text-amber-600 dark:text-amber-400 px-2.5 pb-1 flex items-center gap-1.5">
+            <CheckCircle2 className="h-3 w-3" />
+            Spelling Suggestions for "{misspelledWord}":
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {suggestions.map(suggestion => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => onSelectSuggestion && onSelectSuggestion(suggestion)}
+                className="w-full text-left px-2.5 py-1.5 rounded text-xs font-semibold text-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors flex items-center gap-2 border-none outline-none"
+              >
+                <span className="font-mono">{suggestion}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Actions Section */}
+      <div className="border-b border-border/50 px-1 py-1 shrink-0 select-none grid grid-cols-3 gap-0.5 bg-muted/20">
+        <button
+          type="button"
+          onClick={() => { onCut && onCut(); }}
+          className="px-2 py-1.5 rounded text-[10px] font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 border-none outline-none"
+        >
+          <Scissors className="h-3 w-3" /> Cut
+        </button>
+        <button
+          type="button"
+          onClick={() => { onCopy && onCopy(); }}
+          className="px-2 py-1.5 rounded text-[10px] font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 border-none outline-none"
+        >
+          <Copy className="h-3 w-3" /> Copy
+        </button>
+        <button
+          type="button"
+          onClick={() => { onPaste && onPaste(); }}
+          className="px-2 py-1.5 rounded text-[10px] font-bold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1.5 border-none outline-none"
+        >
+          <Clipboard className="h-3 w-3" /> Paste
+        </button>
+      </div>
+
       {/* Search Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/30 shrink-0">
         <Search className="h-4 w-4 text-muted-foreground" />

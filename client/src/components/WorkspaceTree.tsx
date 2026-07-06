@@ -27,6 +27,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 export interface FileNode {
   name: string;
@@ -59,6 +65,111 @@ export function WorkspaceTree({ dirPath, onOpenFile, activeFilePath, refreshTrig
   // File creation state
   const [newItemPath, setNewItemPath] = useState<{ parent: string; isDir: boolean } | null>(null);
   const [newItemName, setNewItemName] = useState("");
+  
+  // File upload input references & handlers
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const folderInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleTriggerAddFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleTriggerAddFolder = () => {
+    folderInputRef.current?.click();
+  };
+
+  const handleAddFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const createRes = await fetch("/api/workspace/file/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parentPath: dirPath, name: file.name, isDir: false })
+      });
+      const createData = await createRes.json();
+      if (!createData.success) {
+        toast.error("Failed to create file: " + createData.error);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const content = event.target?.result as string;
+        const writeRes = await fetch("/api/workspace/file/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filePath: createData.path, content })
+        });
+        const writeData = await writeRes.json();
+        if (writeData.success) {
+          toast.success(`Successfully added file: ${file.name}`);
+          loadTree();
+          onOpenFile(createData.path);
+        } else {
+          toast.error("Failed to write file content: " + writeData.error);
+        }
+      };
+      reader.readAsText(file);
+    } catch (err: any) {
+      toast.error("Error adding file: " + err.message);
+    }
+    e.target.value = "";
+  };
+
+  const handleAddFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    let addedCount = 0;
+    try {
+      const fileList = Array.from(files);
+      for (const file of fileList) {
+        const relPath = file.webkitRelativePath || file.name;
+        const parts = relPath.split('/');
+        
+        let currentParent = dirPath;
+        for (let i = 0; i < parts.length - 1; i++) {
+          await fetch("/api/workspace/file/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parentPath: currentParent, name: parts[i], isDir: true })
+          });
+          currentParent = `${currentParent}/${parts[i]}`;
+        }
+
+        const fileName = parts[parts.length - 1];
+        const createRes = await fetch("/api/workspace/file/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ parentPath: currentParent, name: fileName, isDir: false })
+        });
+        const createData = await createRes.json();
+        if (!createData.success) continue;
+
+        await new Promise<void>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const content = event.target?.result as string;
+            await fetch("/api/workspace/file/write", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ filePath: createData.path, content })
+            });
+            addedCount++;
+            resolve();
+          };
+          reader.readAsText(file);
+        });
+      }
+      toast.success(`Successfully added folder structure with ${addedCount} file(s)!`);
+      loadTree();
+    } catch (err: any) {
+      toast.error("Error adding folder structure: " + err.message);
+    }
+    e.target.value = "";
+  };
   
   // Rename state
   const [renameItem, setRenameItem] = useState<FileNode | null>(null);
@@ -432,15 +543,51 @@ export function WorkspaceTree({ dirPath, onOpenFile, activeFilePath, refreshTrig
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            title="New File at Root" 
-            onClick={() => setNewItemPath({ parent: dirPath, isDir: false })}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                title="Add Workspace Item" 
+                className="h-7 w-7 text-muted-foreground hover:text-foreground border-none outline-none"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36 bg-background border border-border text-xs">
+              <DropdownMenuItem onClick={() => setNewItemPath({ parent: dirPath, isDir: false })} className="text-xs cursor-pointer hover:bg-muted">
+                <File className="h-3.5 w-3.5 mr-2 text-muted-foreground" /> New File
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleTriggerAddFile} className="text-xs cursor-pointer hover:bg-muted">
+                <Plus className="h-3.5 w-3.5 mr-2 text-muted-foreground" /> Add File
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setNewItemPath({ parent: dirPath, isDir: true })} className="text-xs cursor-pointer hover:bg-muted">
+                <Folder className="h-3.5 w-3.5 mr-2 text-amber-500/80" /> New Folder
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleTriggerAddFolder} className="text-xs cursor-pointer hover:bg-muted">
+                <FolderPlus className="h-3.5 w-3.5 mr-2 text-amber-500/80" /> Add Folder
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Hidden inputs for adding files/folders */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleAddFileChange}
+            className="hidden"
+          />
+          <input
+            type="file"
+            ref={folderInputRef}
+            onChange={handleAddFolderChange}
+            {...{
+              webkitdirectory: "",
+              directory: "",
+              multiple: true
+            } as any}
+            className="hidden"
+          />
         </div>
       </div>
 

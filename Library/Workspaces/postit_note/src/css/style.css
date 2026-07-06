@@ -1,0 +1,150 @@
+/* Basic Global Styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f0f2f5;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.app-container {
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    max-width: 900px;
+    width: 100%;
+    text-align: center;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 25px;
+}
+
+/* Note Input Area */
+.note-input-area {
+    margin-bottom: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+#note-text-input {
+    width: 80%; /* Adjusted for better appearance within app-container */
+    max-width: 600px;
+    min-height: 100px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
+    resize: vertical; /* Allow vertical resizing */
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+#note-text-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+#add-note-button {
+    padding: 12px 25px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 1.05rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+#add-note-button:hover {
+    background-color: #0056b3;
+    transform: translateY(-1px);
+}
+
+#add-note-button:active {
+    transform: translateY(0);
+}
+
+/* Notes Container */
+.notes-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); /* Responsive grid */
+    gap: 20px;
+    padding-top: 20px;
+    border-top: 1px dashed #eee;
+}
+
+/* Individual Post-it Note */
+.note-item {
+    background-color: #fffacd; /* Light yellow, classic post-it color */
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.2); /* Shadow for 3D effect */
+    position: relative;
+    word-wrap: break-word; /* Ensure long words wrap */
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: left;
+    transition: transform 0.1s ease-in-out;
+}
+
+.note-item:hover {
+    transform: translateY(-3px);
+}
+
+.note-content {
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: #333;
+    cursor: pointer; /* Indicate editable */
+    white-space: pre-wrap; /* Preserve whitespace and line breaks */
+    padding-right: 25px; /* Make space for delete button */
+    flex-grow: 1; /* Allow content to grow */
+}
+
+.note-content:focus {
+    outline: 2px solid #007bff;
+    background-color: #fff;
+    border-radius: 3px;
+    padding: 18px 23px 18px 18px; /* Adjust padding slightly for focus border */
+}
+
+.delete-note-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: #ff4d4d;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 25px;
+    height: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    line-height: 1; /* Ensure 'x' is centered */
+}
+
+.delete-note-button:hover {
+    background-color: #cc0000;
+}
+
+/* Styling for empty state or messages (optional) */
+.no-notes-message {
+    grid-column: 1 / -1; /* Span across all columns */
+    color: #666;
+    font-style: italic;
+    margin-top: 30px;
+}
