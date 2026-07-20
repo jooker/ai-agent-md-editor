@@ -197,6 +197,30 @@ async function startServer() {
     }
   });
 
+  // Browse directory tree for Save As dialog treeview
+  app.post("/api/workspace/browse-tree", async (req, res) => {
+    try {
+      const { rootPath } = req.body;
+      if (!rootPath) {
+        return res.json({ success: false, error: "rootPath is required" });
+      }
+
+      const normalizedPath = rootPath.replace(/\\/g, "/");
+      
+      // Check if path exists
+      try {
+        await fs.access(normalizedPath);
+      } catch {
+        return res.json({ success: false, error: "Path does not exist" });
+      }
+
+      const tree = await buildTree(normalizedPath);
+      res.json({ success: true, tree });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // Import .skill archive or handle text skill
   app.post("/api/library/import-skill", async (req, res) => {
     let tempZipPath = "";

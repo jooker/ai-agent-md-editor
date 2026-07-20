@@ -52,14 +52,14 @@ export function checkSpelling(word: string): { misspelled: boolean; suggestions:
 
   // Find suggestions with Levenshtein distance <= 2
   const suggestions: Array<{ word: string; dist: number }> = [];
-  for (const dictWord of DICTIONARY) {
-    if (Math.abs(dictWord.length - cleanWord.length) > 2) continue;
+  DICTIONARY.forEach((dictWord) => {
+    if (Math.abs(dictWord.length - cleanWord.length) > 2) return;
     
     const dist = getLevenshteinDistance(cleanWord, dictWord);
     if (dist <= 2) {
       suggestions.push({ word: dictWord, dist });
     }
-  }
+  });
 
   const topSuggestions = suggestions
     .sort((a, b) => a.dist - b.dist)
@@ -70,4 +70,44 @@ export function checkSpelling(word: string): { misspelled: boolean; suggestions:
     misspelled: true,
     suggestions: topSuggestions
   };
+}
+
+export function addToDictionary(word: string) {
+  const cleanWord = word.trim().toLowerCase().replace(/[^a-z]/g, "");
+  if (cleanWord) {
+    DICTIONARY.add(cleanWord);
+  }
+}
+
+export interface MisspelledWordDetail {
+  word: string;
+  start: number;
+  end: number;
+  suggestions: string[];
+}
+
+export function checkDocumentSpelling(text: string): MisspelledWordDetail[] {
+  const wordRegex = /[a-zA-Z]{3,}/g;
+  const results: MisspelledWordDetail[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  while ((match = wordRegex.exec(text)) !== null) {
+    const word = match[0];
+    const clean = word.toLowerCase();
+    if (seen.has(clean)) continue;
+
+    const check = checkSpelling(word);
+    if (check.misspelled) {
+      seen.add(clean);
+      results.push({
+        word,
+        start: match.index,
+        end: match.index + word.length,
+        suggestions: check.suggestions
+      });
+    }
+  }
+
+  return results;
 }

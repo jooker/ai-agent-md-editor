@@ -1,23 +1,75 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import mermaid from "mermaid";
 import * as yaml from "js-yaml";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Info, Lightbulb, AlertCircle, AlertTriangle, AlertOctagon } from "lucide-react";
+import { Info, Lightbulb, AlertCircle, AlertTriangle, AlertOctagon, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 import Prism from "prismjs";
+import "prismjs/components/prism-markup";
+import "prismjs/components/prism-css";
+import "prismjs/components/prism-clike";
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-python";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-json";
 import "prismjs/components/prism-yaml";
 import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-c";
+import "prismjs/components/prism-cpp";
+import "prismjs/components/prism-csharp";
+import "prismjs/components/prism-java";
+import "prismjs/components/prism-go";
+import "prismjs/components/prism-rust";
+import "prismjs/components/prism-ruby";
+import "prismjs/components/prism-php";
+import "prismjs/components/prism-sql";
+import "prismjs/components/prism-scss";
+import "prismjs/components/prism-docker";
+import "prismjs/components/prism-powershell";
+import "prismjs/components/prism-ini";
+import "prismjs/components/prism-toml";
+import "prismjs/components/prism-kotlin";
+import "prismjs/components/prism-swift";
+import "prismjs/components/prism-dart";
+import "prismjs/components/prism-zig";
+import "prismjs/components/prism-diff";
+import "prismjs/components/prism-regex";
 
 interface MarkdownRendererProps {
   content: string;
 }
+
+const LANGUAGE_ALIASES: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  py: "python",
+  sh: "bash",
+  shell: "bash",
+  zsh: "bash",
+  yml: "yaml",
+  cs: "csharp",
+  "c#": "csharp",
+  "c++": "cpp",
+  h: "c",
+  hpp: "cpp",
+  rs: "rust",
+  rb: "ruby",
+  kt: "kotlin",
+  kts: "kotlin",
+  ps1: "powershell",
+  dockerfile: "docker",
+  html: "markup",
+  xml: "markup",
+  svg: "markup",
+  md: "markdown",
+  json5: "json"
+};
 
 // Helper to render YAML values beautifully
 const renderValue = (val: any): React.ReactNode => {
@@ -54,8 +106,10 @@ const renderValue = (val: any): React.ReactNode => {
 
 // Custom component for code blocks with Mermaid support and Prism syntax highlighting
 const CodeBlock = ({ inline, className, children }: any) => {
+  const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || "");
-  const language = match ? match[1] : "";
+  const rawLang = match ? match[1].toLowerCase() : "";
+  const language = LANGUAGE_ALIASES[rawLang] || rawLang;
   const codeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,11 +118,19 @@ const CodeBlock = ({ inline, className, children }: any) => {
     }
   }, [language]);
 
+  if (inline) {
+    return (
+      <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[11px] text-amber-600 dark:text-amber-400 border border-border/40">
+        {children}
+      </code>
+    );
+  }
+
   if (language === "mermaid") {
     return (
       <div
         ref={codeRef}
-        className="mermaid my-4 flex justify-center bg-muted/20 p-4 rounded-lg overflow-x-auto"
+        className="mermaid my-4 flex justify-center bg-muted/20 p-4 rounded-lg overflow-x-auto border border-border/40"
       >
         {String(children).replace(/\n$/, "")}
       </div>
@@ -79,39 +141,64 @@ const CodeBlock = ({ inline, className, children }: any) => {
   let highlightedHtml = "";
   let hasHighlight = false;
 
-  if (language && Prism.languages[language]) {
+  const targetLang = language && Prism.languages[language] ? language : "javascript";
+  if (Prism.languages[targetLang]) {
     try {
       highlightedHtml = Prism.highlight(
         codeText,
-        Prism.languages[language],
-        language
+        Prism.languages[targetLang],
+        targetLang
       );
       hasHighlight = true;
     } catch (e) {
-      console.error("Prism highlighting error:", e);
+      console.error("Prism syntax highlighting error:", e);
     }
   }
 
-  if (hasHighlight) {
-    return (
-      <pre className="bg-slate-900/90 dark:bg-slate-950/80 text-slate-100 p-4 rounded-lg overflow-x-auto my-3 border border-border/40 font-mono text-xs leading-relaxed relative group">
-        <div className="absolute right-2.5 top-2.5 text-[9px] uppercase tracking-widest text-muted-foreground/60 bg-muted/20 border border-border/20 px-1.5 py-0.5 rounded font-mono select-none opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          {language}
-        </div>
-        <code 
-          className={`prism-code language-${language}`}
-          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-        />
-      </pre>
-    );
-  }
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(codeText);
+    setCopied(true);
+    toast.success("Code copied to clipboard!");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <pre className="bg-muted text-muted-foreground p-4 rounded-lg overflow-x-auto my-3 border border-border font-mono text-xs leading-relaxed">
-      <code className={className}>
-        {children}
-      </code>
-    </pre>
+    <div className="relative group my-4 rounded-xl border border-border/60 overflow-hidden shadow-sm bg-slate-950 text-slate-100">
+      {/* Code Header Bar */}
+      <div className="bg-slate-900/90 px-3 py-1.5 border-b border-border/40 flex items-center justify-between text-[11px] font-mono select-none">
+        <span className="text-amber-500 font-bold uppercase tracking-wider text-[10px]">
+          {rawLang || "code"}
+        </span>
+        <button
+          onClick={handleCopyCode}
+          className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-100 transition-colors bg-slate-800/80 hover:bg-slate-800 px-2 py-0.5 rounded border border-slate-700/50 cursor-pointer"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-400" />
+              <span className="text-emerald-400 font-medium">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Code Body */}
+      <pre className="p-4 overflow-x-auto font-mono text-xs leading-relaxed">
+        {hasHighlight ? (
+          <code
+            className={`prism-code language-${targetLang}`}
+            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          />
+        ) : (
+          <code className={className}>{codeText}</code>
+        )}
+      </pre>
+    </div>
   );
 };
 

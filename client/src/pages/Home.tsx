@@ -4,7 +4,7 @@ import {
   Bold, Italic, List, ListOrdered, Link as LinkIcon, Code, Terminal, Quote, Table, FileText, 
   Plus, X, Download, Copy, Trash2, HelpCircle, BookOpen, Sparkles, Split, Eye, Edit3, Sun, Moon,
   Sliders, Strikethrough, ListTodo, AlertCircle, Monitor, FolderOpen, Bot, Bug, FolderGit2, Check, Undo, Redo, Compass, Settings,
-  Save, LogOut, ArrowRight, Search, Folder, Archive
+  Save, LogOut, ArrowRight, Search, Folder, Archive, ChevronRight, ChevronDown, FilePlus, Pencil, CopyPlus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,8 +20,19 @@ import {
   DropdownMenu, 
   DropdownMenuTrigger, 
   DropdownMenuContent, 
-  DropdownMenuItem 
+  DropdownMenuItem,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Workspace & Linter imports
 import { WorkspaceTree } from "@/components/WorkspaceTree";
@@ -32,7 +43,48 @@ import { lintMarkdown, Diagnostic } from "@/lib/mdLinter";
 import { SkillsBrowser } from "@/components/SkillsBrowser";
 import { ExtensionsManager, Extension } from "@/components/ExtensionsManager";
 import { SnippetMenu, SnippetItem } from "@/components/SnippetMenu";
-import { checkSpelling } from "@/lib/spellChecker";
+import { checkSpelling, addToDictionary, checkDocumentSpelling, MisspelledWordDetail } from "@/lib/spellChecker";
+
+// Comprehensive file extension groups for Save As dialog
+const FILE_EXTENSION_GROUPS: { label: string; extensions: string[] }[] = [
+  {
+    label: "Documents",
+    extensions: [".md", ".txt", ".markdown", ".json", ".yaml", ".yml", ".xml", ".csv", ".toml", ".ini", ".cfg", ".log", ".nfo"]
+  },
+  {
+    label: "Web Development",
+    extensions: [".html", ".htm", ".css", ".scss", ".sass", ".less", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".astro"]
+  },
+  {
+    label: "Programming Languages",
+    extensions: [
+      ".py", ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".go", ".rs", ".rb", ".php",
+      ".swift", ".kt", ".kts", ".scala", ".r", ".lua", ".perl", ".pl", ".dart", ".zig",
+      ".nim", ".v", ".ex", ".exs", ".erl", ".hs", ".clj", ".ml", ".fs", ".fsx"
+    ]
+  },
+  {
+    label: "Shell & Scripts",
+    extensions: [".sh", ".bash", ".zsh", ".bat", ".ps1", ".cmd", ".fish"]
+  },
+  {
+    label: "Data & Config",
+    extensions: [".env", ".dockerfile", ".makefile", ".cmake", ".gradle", ".properties", ".conf"]
+  },
+  {
+    label: "AgentForge",
+    extensions: [".skill", ".ai", ".gmt", ".aws", ".amd", ".workspace", ".project", ".version"]
+  }
+];
+
+// FileNode interface for treeview in Save As dialog
+interface FileTreeNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileTreeNode[];
+  size?: number;
+}
 
 interface Tab {
   id: string;
@@ -348,6 +400,26 @@ export default function Home() {
   const [misspelledWord, setMisspelledWord] = useState<string>("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [misspelledRange, setMisspelledRange] = useState<{ start: number; end: number } | null>(null);
+  const [docSpellingIssues, setDocSpellingIssues] = useState<MisspelledWordDetail[]>([]);
+
+  // Save As Dialog state
+  const [showSaveAsDialog, setShowSaveAsDialog] = useState(false);
+  const [saveAsFilename, setSaveAsFilename] = useState("");
+  const [saveAsExtension, setSaveAsExtension] = useState(".md");
+  const [saveAsPath, setSaveAsPath] = useState("");
+  const [saveAsBrowseTree, setSaveAsBrowseTree] = useState<FileTreeNode[]>([]);
+  const [saveAsBrowseLoading, setSaveAsBrowseLoading] = useState(false);
+  const [saveAsExpandedDirs, setSaveAsExpandedDirs] = useState<Set<string>>(new Set());
+
+  // Tab Context Menu state
+  const [tabContextMenu, setTabContextMenu] = useState<{ open: boolean; x: number; y: number; tabId: string }>({
+    open: false, x: 0, y: 0, tabId: ""
+  });
+
+  // Tab Rename state
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [renamingValue, setRenamingValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Tabstop Session for Snippet navigation
   interface TabStop {
@@ -558,6 +630,25 @@ export default function Home() {
       }, 0);
     }
     setSnippetMenuOpen(false);
+  };
+
+  const handleAddToDictionary = (word: string) => {
+    addToDictionary(word);
+    setMisspelledWord("");
+    setSuggestions([]);
+    setMisspelledRange(null);
+    setDocSpellingIssues(prev => prev.filter(item => item.word.toLowerCase() !== word.toLowerCase()));
+    toast.success(`Added "${word}" to dictionary`);
+  };
+
+  const handleCheckFullDocument = () => {
+    const issues = checkDocumentSpelling(activeContent);
+    setDocSpellingIssues(issues);
+    if (issues.length === 0) {
+      toast.success("No spelling errors found in active document!");
+    } else {
+      toast.info(`Found ${issues.length} spelling issue(s) in document`);
+    }
   };
 
   const handleCut = async () => {
@@ -1453,8 +1544,8 @@ export default function Home() {
     toast.success("New tab created");
   };
 
-  const closeTab = (idToClose: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const closeTab = (idToClose: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (tabs.length === 1) {
       toast.error("Keep at least one tab open");
       return;
@@ -1486,6 +1577,191 @@ export default function Home() {
     
     const finalTitle = `${sanitizedBase}${finalExt}`;
     setTabs(prev => prev.map(t => t.id === id ? { ...t, title: finalTitle } : t));
+  };
+
+  // Duplicate a tab
+  const duplicateTab = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    
+    const extRegex = /\.[a-zA-Z0-9]+$/;
+    const extMatch = tab.title.match(extRegex);
+    const ext = extMatch ? extMatch[0] : "";
+    const baseName = ext ? tab.title.replace(extRegex, "") : tab.title;
+    
+    const newTab: Tab = {
+      id: `tab-${Date.now()}`,
+      title: `${baseName}-copy${ext}`,
+      content: tab.content,
+      history: [tab.content],
+      historyIndex: 0
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+    toast.success(`Duplicated "${tab.title}"`);
+  };
+
+  // Tab Context Menu handlers
+  const handleTabContextMenu = (e: React.MouseEvent, tabId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setTabContextMenu({ open: true, x: e.clientX, y: e.clientY, tabId });
+  };
+
+  const closeTabContextMenu = () => {
+    setTabContextMenu(prev => ({ ...prev, open: false }));
+  };
+
+  // Inline tab rename handlers
+  const startRenaming = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const extRegex = /\.[a-zA-Z0-9]+$/;
+    const extMatch = tab.title.match(extRegex);
+    const displayName = extMatch ? tab.title.replace(extRegex, "") : tab.title;
+    setRenamingTabId(tabId);
+    setRenamingValue(displayName);
+    setTimeout(() => renameInputRef.current?.focus(), 50);
+  };
+
+  const commitRename = () => {
+    if (renamingTabId && renamingValue.trim()) {
+      renameTab(renamingTabId, renamingValue);
+    }
+    setRenamingTabId(null);
+    setRenamingValue("");
+  };
+
+  // Save As dialog handlers
+  const openSaveAsDialog = (tabId?: string) => {
+    const tab = tabId ? tabs.find(t => t.id === tabId) : activeTab;
+    if (!tab) return;
+    
+    const extRegex = /\.[a-zA-Z0-9]+$/;
+    const extMatch = tab.title.match(extRegex);
+    const ext = extMatch ? extMatch[0].toLowerCase() : ".md";
+    const baseName = extMatch ? tab.title.replace(extRegex, "") : tab.title;
+    
+    setSaveAsFilename(baseName);
+    setSaveAsExtension(ext);
+    setSaveAsPath(activeWorkspaceDir || "");
+    setSaveAsBrowseTree([]);
+    setSaveAsExpandedDirs(new Set());
+    setShowSaveAsDialog(true);
+    
+    // Pre-load tree if workspace is open
+    if (activeWorkspaceDir) {
+      loadSaveAsTree(activeWorkspaceDir);
+    }
+  };
+
+  const loadSaveAsTree = async (rootPath: string) => {
+    setSaveAsBrowseLoading(true);
+    try {
+      const res = await fetch("/api/workspace/browse-tree", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rootPath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSaveAsBrowseTree(data.tree);
+      } else {
+        toast.error("Failed to load directory: " + data.error);
+      }
+    } catch (err: any) {
+      toast.error("Error loading directory tree: " + err.message);
+    } finally {
+      setSaveAsBrowseLoading(false);
+    }
+  };
+
+  const handleBrowseSaveAsLocation = async () => {
+    try {
+      const res = await fetch("/api/workspace/browse", { method: "POST" });
+      const data = await res.json();
+      if (data.success && data.path) {
+        setSaveAsPath(data.path);
+        loadSaveAsTree(data.path);
+        toast.success("Folder selected!");
+      } else if (data.error) {
+        toast.error(data.error);
+      }
+    } catch (err: any) {
+      toast.error("Failed to open folder picker: " + err.message);
+    }
+  };
+
+  const handleSaveAsSubmit = async () => {
+    if (!saveAsFilename.trim() || !saveAsPath.trim()) {
+      toast.error("Please specify a filename and location");
+      return;
+    }
+    
+    const fullFilename = `${sanitizeFilename(saveAsFilename)}${saveAsExtension}`;
+    const fullPath = `${saveAsPath}/${fullFilename}`;
+    
+    try {
+      const lastSlashIdx = fullPath.lastIndexOf("/");
+      const parentDir = fullPath.substring(0, lastSlashIdx);
+      const filename = fullPath.substring(lastSlashIdx + 1);
+      
+      const createRes = await fetch("/api/workspace/file/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parentPath: parentDir,
+          name: filename,
+          isDir: false
+        })
+      });
+      const createData = await createRes.json();
+      if (createData.success) {
+        const writeRes = await fetch("/api/workspace/file/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filePath: createData.path,
+            content: activeContent
+          })
+        });
+        if (writeRes.ok) {
+          toast.success(`Saved as ${fullFilename}`);
+          setShowSaveAsDialog(false);
+          
+          // Open the newly saved file in a tab
+          const newTab: Tab = {
+            id: `tab-${Date.now()}`,
+            title: filename,
+            content: activeContent,
+            filePath: createData.path,
+            history: [activeContent],
+            historyIndex: 0
+          };
+          setTabs(prev => [...prev, newTab]);
+          setActiveTabId(newTab.id);
+          setRefreshWorkspaceTrigger(prev => prev + 1);
+        } else {
+          toast.error("Failed to write file contents");
+        }
+      } else {
+        toast.error("Failed to create file: " + createData.error);
+      }
+    } catch (err: any) {
+      toast.error("Error saving file: " + err.message);
+    }
+  };
+
+  const toggleSaveAsDir = (dirPath: string) => {
+    setSaveAsExpandedDirs(prev => {
+      const next = new Set(prev);
+      if (next.has(dirPath)) {
+        next.delete(dirPath);
+      } else {
+        next.add(dirPath);
+      }
+      return next;
+    });
   };
 
   const openSkillsBrowser = () => {
@@ -2128,57 +2404,62 @@ export default function Home() {
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               const isVirtual = tab.type === "skills_browser" || tab.type === "extensions_manager";
+              const isRenamingThis = renamingTabId === tab.id;
+
               return (
-                <div
-                  key={tab.id}
-                  onClick={() => setActiveTabId(tab.id)}
-                  className={`group relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t-md border-t-2 transition-all duration-150 cursor-pointer ${
-                    isActive 
-                      ? "bg-background border-amber-500 text-amber-600 dark:text-amber-400" 
-                      : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
-                  }`}
-                >
-                  {tab.type === "skills_browser" ? (
-                    <Compass className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
-                  ) : tab.type === "extensions_manager" ? (
-                    <Settings className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
-                  ) : (
-                    <FileText className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
-                  )}
+                <Tooltip key={tab.id}>
+                  <TooltipTrigger asChild>
+                    <div
+                      onClick={() => setActiveTabId(tab.id)}
+                      onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
+                      onDoubleClick={() => !isVirtual && startRenaming(tab.id)}
+                      className={`group relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t-md border-t-2 transition-all duration-150 cursor-pointer select-none ${
+                        isActive 
+                          ? "bg-background border-amber-500 text-amber-600 dark:text-amber-400" 
+                          : "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                      }`}
+                    >
+                      {tab.type === "skills_browser" ? (
+                        <Compass className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
+                      ) : tab.type === "extensions_manager" ? (
+                        <Settings className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
+                      ) : (
+                        <FileText className={`h-3.5 w-3.5 ${isActive ? "text-amber-500" : "text-muted-foreground"}`} />
+                      )}
 
-                  {isVirtual ? (
-                    <span className="font-mono text-[11px] select-none pr-1">{tab.title}</span>
-                  ) : (() => {
-                    const extRegex = /\.(json|js|version|sh|bat|ps1|skill|markdown|gmt|nfo|aws|amd|txt|workspace|project|ai|md)$/i;
-                    const extMatch = tab.title.match(extRegex);
-                    const ext = extMatch ? extMatch[0].toLowerCase() : "";
-                    const displayName = ext ? tab.title.substring(0, tab.title.lastIndexOf(".")) : tab.title;
-
-                    return (
-                      <>
+                      {isRenamingThis ? (
                         <input
+                          ref={renameInputRef}
                           type="text"
-                          value={displayName}
-                          onChange={(e) => renameTab(tab.id, e.target.value + ext)}
-                          className="bg-transparent border-none focus:outline-none focus:ring-0 w-16 sm:w-24 text-ellipsis cursor-pointer font-mono text-[11px]"
-                          title="Double click to rename"
+                          value={renamingValue}
+                          onChange={(e) => setRenamingValue(e.target.value)}
+                          onBlur={commitRename}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") commitRename();
+                            if (e.key === "Escape") setRenamingTabId(null);
+                          }}
                           onClick={(e) => e.stopPropagation()}
+                          className="bg-background border border-amber-500 rounded px-1 text-xs font-mono focus:outline-none w-24 text-foreground"
                         />
-                        {ext && (
-                          <span className="text-[10px] text-muted-foreground font-mono">
-                            {ext}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                  <button
-                    onClick={(e) => closeTab(tab.id, e)}
-                    className="p-0.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-60 group-hover:opacity-100"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
+                      ) : (
+                        <span className="font-mono text-[11px] truncate max-w-[120px] sm:max-w-[160px]">
+                          {tab.title}
+                        </span>
+                      )}
+
+                      <button
+                        onClick={(e) => closeTab(tab.id, e)}
+                        className="p-0.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-60 group-hover:opacity-100 ml-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-[10px] bg-card border border-border text-foreground">
+                    <div className="font-semibold">{tab.title}</div>
+                    {tab.filePath && <div className="text-muted-foreground font-mono text-[9px]">{tab.filePath}</div>}
+                  </TooltipContent>
+                </Tooltip>
               );
             })}
             
@@ -2330,24 +2611,53 @@ export default function Home() {
                 </TooltipContent>
               </Tooltip>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCopyAll}
-                className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
-                title="Copy all"
-              >
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleDownload}
-                className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
-                title="Download file"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleCopyAll}
+                    className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
+                  Copy All
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleDownload}
+                    className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
+                  Download File
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openSaveAsDialog()}
+                    className="h-7 w-7 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-muted"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-card border border-border text-foreground text-xs">
+                  Save As...
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         )}
@@ -2734,11 +3044,17 @@ export default function Home() {
           x={snippetMenuPos.x}
           y={snippetMenuPos.y}
           initialSearch={snippetSearchQuery}
-          onClose={() => setSnippetMenuOpen(false)}
+          onClose={() => {
+            setSnippetMenuOpen(false);
+            setDocSpellingIssues([]);
+          }}
           onSelect={handleSelectSnippet}
           misspelledWord={misspelledWord}
           suggestions={suggestions}
           onSelectSuggestion={handleSelectSuggestion}
+          onAddToDictionary={handleAddToDictionary}
+          onCheckFullDocument={handleCheckFullDocument}
+          documentSpellingIssues={docSpellingIssues}
           onCut={handleCut}
           onCopy={handleCopy}
           onPaste={handlePaste}
@@ -3074,8 +3390,270 @@ export default function Home() {
           </div>
         )}
 
+        {/* Tab Context Menu Backdrop */}
+        {tabContextMenu.open && (
+          <div
+            className="fixed inset-0 z-40 bg-transparent"
+            onClick={closeTabContextMenu}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              closeTabContextMenu();
+            }}
+          />
+        )}
+
+        {/* Tab Context Menu */}
+        {tabContextMenu.open && (
+          <div
+            className="fixed z-50 min-w-[150px] bg-popover border border-border rounded-md shadow-lg p-1 text-xs text-popover-foreground animate-in fade-in-80 zoom-in-95"
+            style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              onClick={() => {
+                openSaveAsDialog(tabContextMenu.tabId);
+                closeTabContextMenu();
+              }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted hover:text-amber-500 transition-colors"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span>Save As...</span>
+            </div>
+            <div
+              onClick={() => {
+                duplicateTab(tabContextMenu.tabId);
+                closeTabContextMenu();
+              }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted hover:text-amber-500 transition-colors"
+            >
+              <CopyPlus className="h-3.5 w-3.5" />
+              <span>Duplicate</span>
+            </div>
+            <div
+              onClick={() => {
+                startRenaming(tabContextMenu.tabId);
+                closeTabContextMenu();
+              }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-muted hover:text-amber-500 transition-colors"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              <span>Rename</span>
+            </div>
+            <DropdownMenuSeparator className="my-1 bg-border" />
+            <div
+              onClick={() => {
+                closeTab(tabContextMenu.tabId);
+                closeTabContextMenu();
+              }}
+              className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Close</span>
+            </div>
+          </div>
+        )}
+
+        {/* Save As Dialog */}
+        <Dialog open={showSaveAsDialog} onOpenChange={setShowSaveAsDialog}>
+          <DialogContent className="max-w-lg bg-card border border-border text-card-foreground">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+                <FilePlus className="h-4 w-4 text-amber-500" />
+                Save File As
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2 text-xs">
+              {/* Filename & Extension */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2 space-y-1">
+                  <label className="text-[11px] font-medium text-muted-foreground">Filename</label>
+                  <Input
+                    value={saveAsFilename}
+                    onChange={(e) => setSaveAsFilename(e.target.value)}
+                    placeholder="document"
+                    className="h-8 text-xs font-mono bg-background"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-muted-foreground">Save as Type</label>
+                  <Select value={saveAsExtension} onValueChange={setSaveAsExtension}>
+                    <SelectTrigger className="h-8 text-xs font-mono bg-background">
+                      <SelectValue placeholder=".md" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60 bg-card border border-border text-foreground z-[100]">
+                      {FILE_EXTENSION_GROUPS.map((group) => (
+                        <SelectGroup key={group.label}>
+                          <SelectLabel className="text-[10px] text-amber-500 font-bold uppercase tracking-wider px-2 py-1">
+                            {group.label}
+                          </SelectLabel>
+                          {group.extensions.map((ext) => (
+                            <SelectItem key={ext} value={ext} className="text-xs font-mono cursor-pointer">
+                              {ext}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Location Picker */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-muted-foreground">Location</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={saveAsPath}
+                    onChange={(e) => {
+                      setSaveAsPath(e.target.value);
+                      loadSaveAsTree(e.target.value);
+                    }}
+                    placeholder="C:/path/to/folder"
+                    className="h-8 text-xs font-mono bg-background flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBrowseSaveAsLocation}
+                    className="h-8 text-xs gap-1 border-border shrink-0"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 text-amber-500" />
+                    Browse...
+                  </Button>
+                </div>
+              </div>
+
+              {/* Folder / File Treeview */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-muted-foreground flex justify-between items-center">
+                  <span>Directory Treeview</span>
+                  {saveAsBrowseLoading && <span className="text-amber-500 text-[10px]">Loading...</span>}
+                </label>
+                <div className="border border-border rounded-md bg-background h-44 p-2 overflow-auto">
+                  {saveAsBrowseTree.length > 0 ? (
+                    <SaveAsFileTree
+                      nodes={saveAsBrowseTree}
+                      selectedPath={saveAsPath}
+                      onSelectPath={setSaveAsPath}
+                      expandedDirs={saveAsExpandedDirs}
+                      onToggleDir={toggleSaveAsDir}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground space-y-1">
+                      <Folder className="h-6 w-6 opacity-40 text-amber-500" />
+                      <p className="text-xs">No workspace or directory selected</p>
+                      <p className="text-[10px]">Click "Browse..." to select a folder location</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Summary Preview */}
+              <div className="bg-muted/40 p-2 rounded border border-border text-[11px] font-mono flex items-center justify-between text-muted-foreground">
+                <span className="truncate max-w-[340px]">
+                  Output: <span className="text-amber-500">{saveAsPath ? `${saveAsPath}/` : ""}{saveAsFilename}{saveAsExtension}</span>
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSaveAsDialog(false)}
+                  className="h-8 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveAsSubmit}
+                  className="h-8 text-xs bg-amber-500 hover:bg-amber-600 text-black font-semibold gap-1"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  Save File
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </TooltipProvider>
+  );
+}
+
+// =============================================================================
+// Treeview Helper Component for Save As Dialog
+// =============================================================================
+
+function SaveAsFileTree({
+  nodes,
+  selectedPath,
+  onSelectPath,
+  expandedDirs,
+  onToggleDir
+}: {
+  nodes: FileTreeNode[];
+  selectedPath: string;
+  onSelectPath: (path: string) => void;
+  expandedDirs: Set<string>;
+  onToggleDir: (path: string) => void;
+}) {
+  if (!nodes || nodes.length === 0) {
+    return <div className="text-xs text-muted-foreground italic p-2">No files or folders found</div>;
+  }
+
+  return (
+    <div className="space-y-0.5 text-xs font-mono select-none">
+      {nodes.map(node => {
+        const isExpanded = expandedDirs.has(node.path);
+        const isSelected = selectedPath === node.path;
+        return (
+          <div key={node.path}>
+            <div
+              onClick={() => {
+                if (node.isDir) {
+                  onToggleDir(node.path);
+                  onSelectPath(node.path);
+                }
+              }}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer transition-colors ${
+                isSelected
+                  ? "bg-amber-500/20 text-amber-500 font-medium"
+                  : "hover:bg-muted/50 text-foreground"
+              }`}
+            >
+              {node.isDir ? (
+                <>
+                  {isExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                </>
+              ) : (
+                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground ml-5" />
+              )}
+              <span className="truncate">{node.name}</span>
+            </div>
+            {node.isDir && isExpanded && node.children && (
+              <div className="pl-4 border-l border-border/40 ml-3">
+                <SaveAsFileTree
+                  nodes={node.children}
+                  selectedPath={selectedPath}
+                  onSelectPath={onSelectPath}
+                  expandedDirs={expandedDirs}
+                  onToggleDir={onToggleDir}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

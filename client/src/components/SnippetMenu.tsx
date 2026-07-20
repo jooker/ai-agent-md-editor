@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
-import { Search, Code, FileText, ChevronRight, Copy, Scissors, Clipboard, CheckCircle2 } from "lucide-react";
+import { Search, Code, FileText, ChevronRight, Copy, Scissors, Clipboard, CheckCircle2, SpellCheck, PlusCircle, AlertCircle } from "lucide-react";
 import { TEMPLATES } from "@/lib/templates";
+import { MisspelledWordDetail } from "@/lib/spellChecker";
 
 export interface SnippetItem {
   name: string;
@@ -103,6 +104,9 @@ interface SnippetMenuProps {
   misspelledWord?: string;
   suggestions?: string[];
   onSelectSuggestion?: (suggestion: string) => void;
+  onAddToDictionary?: (word: string) => void;
+  onCheckFullDocument?: () => void;
+  documentSpellingIssues?: MisspelledWordDetail[];
   onCut?: () => void;
   onCopy?: () => void;
   onPaste?: () => void;
@@ -118,6 +122,9 @@ export function SnippetMenu({
   misspelledWord,
   suggestions,
   onSelectSuggestion,
+  onAddToDictionary,
+  onCheckFullDocument,
+  documentSpellingIssues,
   onCut,
   onCopy,
   onPaste
@@ -183,7 +190,7 @@ export function SnippetMenu({
   // Adjust menu position to keep it on-screen
   const adjustPosition = () => {
     const width = 360;
-    const height = 320;
+    const height = 340;
     let adjustedX = x;
     let adjustedY = y;
 
@@ -218,26 +225,119 @@ export function SnippetMenu({
         top: `${pos.top}px`,
         zIndex: 9999,
       }}
-      className="w-[360px] max-h-[320px] bg-background/95 border border-border/80 rounded-xl shadow-2xl backdrop-blur-md flex flex-col overflow-hidden text-foreground animate-in fade-in zoom-in-95 duration-100"
+      className="w-[360px] max-h-[380px] bg-background/95 border border-border/80 rounded-xl shadow-2xl backdrop-blur-md flex flex-col overflow-hidden text-foreground animate-in fade-in zoom-in-95 duration-100"
       onKeyDown={handleKeyDown}
     >
-      {/* Suggestions Section */}
-      {suggestions && suggestions.length > 0 && (
-        <div className="border-b border-border/50 bg-amber-500/5 px-1 py-1.5 shrink-0 select-none">
-          <div className="text-[9px] uppercase tracking-wider font-bold text-amber-600 dark:text-amber-400 px-2.5 pb-1 flex items-center gap-1.5">
-            <CheckCircle2 className="h-3 w-3" />
-            Spelling Suggestions for "{misspelledWord}":
+      {/* Spell Checker Section */}
+      {misspelledWord ? (
+        <div className="border-b border-border/50 bg-amber-500/5 px-2.5 py-2 shrink-0 select-none space-y-1">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-amber-600 dark:text-amber-400 flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <SpellCheck className="h-3.5 w-3.5 text-amber-500" />
+              Spelling: "{misspelledWord}"
+            </span>
+            <span className="text-[9px] bg-amber-500/20 px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 font-mono">
+              {suggestions && suggestions.length > 0 ? `${suggestions.length} suggestions` : "No matches"}
+            </span>
           </div>
-          <div className="flex flex-col gap-0.5">
-            {suggestions.map(suggestion => (
+
+          {suggestions && suggestions.length > 0 && (
+            <div className="flex flex-col gap-0.5 pt-0.5">
+              {suggestions.map(suggestion => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => onSelectSuggestion && onSelectSuggestion(suggestion)}
+                  className="w-full text-left px-2 py-1 rounded text-xs font-semibold text-foreground hover:bg-amber-500/15 hover:text-amber-600 dark:hover:text-amber-400 transition-colors flex items-center justify-between border-none outline-none cursor-pointer"
+                >
+                  <span className="font-mono">{suggestion}</span>
+                  <span className="text-[9px] text-muted-foreground font-normal">Replace</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1 pt-1 border-t border-border/40">
+            {onAddToDictionary && (
               <button
-                key={suggestion}
                 type="button"
-                onClick={() => onSelectSuggestion && onSelectSuggestion(suggestion)}
-                className="w-full text-left px-2.5 py-1.5 rounded text-xs font-semibold text-foreground hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors flex items-center gap-2 border-none outline-none"
+                onClick={() => onAddToDictionary(misspelledWord)}
+                className="flex-1 text-left px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex items-center gap-1 border-none outline-none cursor-pointer"
               >
-                <span className="font-mono">{suggestion}</span>
+                <PlusCircle className="h-3 w-3 text-amber-500" />
+                Add to Dictionary
               </button>
+            )}
+            {onCheckFullDocument && (
+              <button
+                type="button"
+                onClick={onCheckFullDocument}
+                className="text-left px-2 py-1 rounded text-[10px] font-medium text-muted-foreground hover:text-amber-500 hover:bg-muted/50 transition-colors flex items-center gap-1 border-none outline-none shrink-0 cursor-pointer"
+              >
+                <SpellCheck className="h-3 w-3" />
+                Scan Full Doc
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        onCheckFullDocument && (
+          <div className="border-b border-border/50 bg-muted/10 px-2.5 py-1.5 shrink-0 select-none flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1.5 font-medium">
+              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+              Spell Checker
+            </span>
+            <button
+              type="button"
+              onClick={onCheckFullDocument}
+              className="text-[10px] font-semibold text-amber-500 hover:text-amber-600 px-2 py-0.5 rounded hover:bg-amber-500/10 transition-colors flex items-center gap-1 border-none outline-none cursor-pointer"
+            >
+              <SpellCheck className="h-3 w-3" />
+              Scan Document
+            </button>
+          </div>
+        )
+      )}
+
+      {/* Full Document Spelling Issues List */}
+      {documentSpellingIssues && documentSpellingIssues.length > 0 && (
+        <div className="border-b border-border/50 bg-amber-500/10 px-2.5 py-2 max-h-36 overflow-y-auto shrink-0 select-none space-y-1">
+          <div className="text-[9px] uppercase tracking-wider font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+            <AlertCircle className="h-3 w-3 text-amber-500" />
+            Document Misspellings ({documentSpellingIssues.length}):
+          </div>
+          <div className="space-y-1">
+            {documentSpellingIssues.map(issue => (
+              <div key={issue.word + issue.start} className="bg-background/80 p-1.5 rounded border border-border/60 text-xs">
+                <div className="flex items-center justify-between font-mono font-semibold text-destructive text-[11px]">
+                  <span>"{issue.word}"</span>
+                  {onAddToDictionary && (
+                    <button
+                      type="button"
+                      onClick={() => onAddToDictionary(issue.word)}
+                      className="text-[9px] text-muted-foreground hover:text-amber-500 font-normal cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  )}
+                </div>
+                {issue.suggestions.length > 0 ? (
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {issue.suggestions.map(sug => (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => onSelectSuggestion && onSelectSuggestion(sug)}
+                        className="text-[10px] font-mono bg-muted/60 hover:bg-amber-500/20 hover:text-amber-500 px-1.5 py-0.5 rounded text-foreground transition-colors cursor-pointer"
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[9px] text-muted-foreground italic">No suggestions</span>
+                )}
+              </div>
             ))}
           </div>
         </div>
