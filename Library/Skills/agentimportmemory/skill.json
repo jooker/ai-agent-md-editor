@@ -1,0 +1,88 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ai-assist/agent-skill-schemas/main/skill-schema.json",
+  "name": "agentimportmemory",
+  "version": "0.1.0",
+  "description": "Provides capabilities for agents to import and manage various types of memory (text, JSON, code, files) into their operational context.",
+  "author": "Your Name <your.email@example.com>",
+  "entrypoint": "scripts/main.js",
+  "language": "javascript",
+  "dependencies": [
+    // List any npm package dependencies here, e.g.,
+    // { "name": "axios", "version": "^0.21.1" }
+  ],
+  "capabilities": [
+    {
+      "name": "import_text_memory",
+      "description": "Imports raw text content into the agent's memory.",
+      "parameters": [
+        {
+          "name": "content",
+          "type": "string",
+          "description": "The text content to be imported.",
+          "required": true
+        },
+        {
+          "name": "context",
+          "type": "string",
+          "description": "Optional context or tag for the memory.",
+          "required": false
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "An object indicating success/failure and any relevant IDs or status."
+      }
+    },
+    {
+      "name": "import_json_memory",
+      "description": "Imports structured JSON data into the agent's memory.",
+      "parameters": [
+        {
+          "name": "data",
+          "type": "object",
+          "description": "The JSON object to be imported.",
+          "required": true
+        },
+        {
+          "name": "schema",
+          "type": "object",
+          "description": "Optional JSON schema for validating the imported data.",
+          "required": false
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "An object indicating success/failure and any relevant IDs or status."
+      }
+    },
+    {
+      "name": "import_code_snippet",
+      "description": "Imports a code snippet into the agent's memory for reference.",
+      "parameters": [
+        {
+          "name": "code",
+          "type": "string",
+          "description": "The code snippet string.",
+          "required": true
+        },
+        {
+          "name": "language",
+          "type": "string",
+          "description": "The programming language of the code (e.g., 'javascript', 'python').",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "An optional description or purpose of the code snippet.",
+          "required": false
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "An object indicating success/failure and any relevant IDs or status."
+      }
+    }
+    // Add more capabilities corresponding to your skill's functions
+  ]
+}
